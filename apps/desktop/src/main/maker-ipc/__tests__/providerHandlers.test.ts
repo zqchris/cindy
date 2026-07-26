@@ -678,6 +678,25 @@ describe('provider:oauth mutation ordering', () => {
     expect(rollbackCredentials).toHaveBeenCalledOnce();
   });
 
+  it('encodes failed stale-login credential rollback as an IPC INTERNAL error', async () => {
+    const harness = new IpcHarness();
+    let finishLogin!: (result: { ok: boolean; rollbackCredentials?: () => boolean }) => void;
+    const oauthLogin = vi.fn(
+      async (): Promise<{ ok: boolean; rollbackCredentials?: () => boolean }> =>
+        new Promise((resolve) => {
+          finishLogin = resolve;
+        }),
+    );
+    registerProviderHandlers(harness, makeDeps({ oauthLogin }));
+
+    const login = harness.invoke(MAKER_INVOKE.PROVIDER_OAUTH_LOGIN, 'openrouter');
+    await vi.waitFor(() => expect(oauthLogin).toHaveBeenCalledOnce());
+    await harness.invoke(MAKER_INVOKE.PROVIDER_OAUTH_CANCEL, 'openrouter');
+    finishLogin({ ok: true, rollbackCredentials: () => false });
+
+    await expect(login).rejects.toMatchObject({ code: 'INTERNAL' });
+  });
+
   it('rejects a new login until provider update and catalog refresh fully settle', async () => {
     mountDb();
     const harness = new IpcHarness();

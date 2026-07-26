@@ -9,7 +9,6 @@ import {
   updateCustomProvider,
 } from '../customProviders';
 import type { ProviderView } from '@cindy/model-providers';
-
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -218,5 +217,105 @@ describe('custom provider credential lifecycle', () => {
         },
       },
     }, {})).rejects.toThrow('Codex restart failed');
+  });
+
+  it('stores a replacement API key before committing the auth-mode update', async () => {
+    const calls: string[] = [];
+    const safeStorageStore = vi.fn(async () => {
+      calls.push('store-key');
+      return true;
+    });
+    const update = vi.fn(async () => {
+      calls.push('update-config');
+      return { ok: true };
+    });
+    vi.stubGlobal('window', {
+      electronAPI: {
+        maker: { updateCustomProvider: update },
+        safeStorageRead: vi.fn(async () => null),
+        safeStorageStore,
+        safeStorageRemove: vi.fn(async () => ({ success: true })),
+      },
+    });
+
+    await updateCustomProvider(
+      {
+        id: 'switch-to-key',
+        name: 'Switch to key',
+        auth: { method: 'apiKey' },
+        runtimes: {
+          codex: {
+            baseUrl: 'https://api.example/v1',
+            models: [{ id: 'm1', name: 'M1' }],
+          },
+        },
+      },
+      { codex: 'replacement-key' },
+    );
+
+    expect(calls).toEqual(['store-key', 'update-config']);
+  });
+
+  it('does not commit the auth-mode update when replacement key storage fails', async () => {
+    const update = vi.fn();
+    vi.stubGlobal('window', {
+      electronAPI: {
+        maker: { updateCustomProvider: update },
+        safeStorageRead: vi.fn(async () => 'old-key'),
+        safeStorageStore: vi.fn(async () => false),
+        safeStorageRemove: vi.fn(async () => ({ success: true })),
+      },
+    });
+
+    await expect(
+      updateCustomProvider(
+        {
+          id: 'switch-to-key',
+          name: 'Switch to key',
+          auth: { method: 'apiKey' },
+          runtimes: {
+            codex: {
+              baseUrl: 'https://api.example/v1',
+              models: [{ id: 'm1', name: 'M1' }],
+            },
+          },
+        },
+        { codex: 'replacement-key' },
+      ),
+    ).rejects.toThrow('Failed to store codex provider credential');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('restores the previous API key when the config update fails', async () => {
+    const safeStorageStore = vi.fn(async () => true);
+    vi.stubGlobal('window', {
+      electronAPI: {
+        maker: {
+          updateCustomProvider: vi.fn().mockRejectedValue(new Error('config update failed')),
+        },
+        safeStorageRead: vi.fn(async () => 'old-key'),
+        safeStorageStore,
+        safeStorageRemove: vi.fn(async () => ({ success: true })),
+      },
+    });
+
+    await expect(
+      updateCustomProvider(
+        {
+          id: 'existing',
+          name: 'Existing',
+          runtimes: {
+            codex: {
+              baseUrl: 'https://api.example/v1',
+              models: [{ id: 'm1', name: 'M1' }],
+            },
+          },
+        },
+        { codex: 'new-key' },
+      ),
+    ).rejects.toThrow('config update failed');
+
+    expect(safeStorageStore).toHaveBeenNthCalledWith(1, 'provider_key_existing_codex', 'new-key');
+    expect(safeStorageStore).toHaveBeenNthCalledWith(2, 'provider_key_existing_codex', 'old-key');
   });
 });

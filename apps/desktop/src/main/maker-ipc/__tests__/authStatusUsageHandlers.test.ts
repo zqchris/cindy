@@ -419,6 +419,46 @@ describe('maker auth IPC handlers', () => {
     expect(triggerAgentLogin).toHaveBeenCalledOnce();
   });
 
+  it('cancels a login request while it is queued behind logout finalization', async () => {
+    const harness = new IpcHarness();
+    let finishLogout!: () => void;
+    const logoutAgent = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishLogout = resolve;
+        }),
+    );
+    const triggerAgentLogin = vi.fn().mockResolvedValue({
+      authenticated: true,
+      authSource: 'oauth',
+    });
+    const cancelAgentLogin = vi.fn();
+
+    registerMakerAuthHandlers(
+      harness,
+      createMakerStub({ logoutAgent, triggerAgentLogin, cancelAgentLogin }),
+      vi.fn(),
+      () => null,
+      vi.fn().mockResolvedValue(undefined),
+    );
+
+    const logout = harness.invoke(MAKER_INVOKE.AUTH_LOGOUT, 'codex');
+    await vi.waitFor(() => expect(logoutAgent).toHaveBeenCalledOnce());
+    const login = harness.invoke(MAKER_INVOKE.AUTH_TRIGGER_LOGIN, 'codex');
+    expect(triggerAgentLogin).not.toHaveBeenCalled();
+
+    await harness.invoke(MAKER_INVOKE.AUTH_CANCEL_LOGIN, 'codex');
+    finishLogout();
+
+    await expect(logout).resolves.toBeUndefined();
+    await expect(login).resolves.toEqual({
+      authenticated: false,
+      errorReason: 'auth_mutation_superseded',
+    });
+    expect(cancelAgentLogin).toHaveBeenCalledWith('codex');
+    expect(triggerAgentLogin).not.toHaveBeenCalled();
+  });
+
   it('waits for a later logout that supersedes the finalization already being awaited', async () => {
     const harness = new IpcHarness();
     const logoutResolvers: Array<() => void> = [];

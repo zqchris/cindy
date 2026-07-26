@@ -6,8 +6,8 @@
  *
  * 顺序约定：
  *   - create：先写配置（IPC 在重名 / 非法时 reject，避免误覆盖既有同 id 的 key），成功后存各 runtime 的密钥。
- *   - update：先写配置；API key 模式仅覆盖用户填了新密钥的 runtime，切到 OAuth / 无鉴权
- *     或移除 runtime 时清理不再可达的旧密钥。
+ *   - update：API key 模式先把用户填写的新密钥可靠落盘，再写配置；配置失败则恢复原密钥。
+ *     切到 OAuth / 无鉴权或移除 runtime 时，在配置成功后清理不再可达的旧密钥。
  *   - delete：先删配置，再清所有 runtime 的密钥（幂等）。
  */
 
@@ -120,13 +120,19 @@ export async function readCustomProviderKey(
   }
 }
 
-/** 写入各 runtime 的密钥（仅非空的）。 */
-async function saveKeys(providerId: string, keys: RuntimeKeys): Promise<void> {
+async function storeKey(providerId: string, agent: AgentKind, key: string): Promise<void> {
+  const stored = await window.electronAPI.safeStorageStore(
+    customProviderSecretStorageKey(providerId, agent),
+    key,
+  );
+  if (!stored) throw new Error(`Failed to store ${agent} provider credential`);
+}
+
+/** 写入配置中各 runtime 的密钥（仅非空的）。 */
+async function saveKeys(config: CustomProviderConfig, keys: RuntimeKeys): Promise<void> {
   for (const agent of ALL_AGENTS) {
     const key = keys[agent]?.trim();
-    if (key) {
-      await window.electronAPI.safeStorageStore(customProviderSecretStorageKey(providerId, agent), key);
-    }
+    if (config.runtimes[agent] && key) await storeKey(config.id, agent, key);
   }
 }
 
@@ -139,26 +145,86 @@ async function removeKey(providerId: string, agent: AgentKind): Promise<void> {
   }
 }
 
+interface StagedKey {
+  agent: AgentKind;
+  previous: string | null;
+}
+
+async function restoreStagedKeys(providerId: string, staged: readonly StagedKey[]): Promise<void> {
+  for (const { agent, previous } of [...staged].reverse()) {
+    if (previous !== null) {
+      await storeKey(providerId, agent, previous);
+    } else {
+      await removeKey(providerId, agent);
+    }
+  }
+}
+
+/**
+ * OAuth → API key 的配置更新会在 main 中删除 OAuth 凭证。先把替换 key 写稳，
+ * 避免 safeStorage 返回 false 时已经不可逆地断开旧账号。若后续配置更新失败，由调用方
+ * 用这里保留的快照恢复原 key。
+ */
+async function stageKeys(config: CustomProviderConfig, keys: RuntimeKeys): Promise<StagedKey[]> {
+  const staged: StagedKey[] = [];
+  try {
+    for (const agent of ALL_AGENTS) {
+      const key = keys[agent]?.trim();
+      if (!config.runtimes[agent] || !key) continue;
+      const previous = await window.electronAPI.safeStorageRead(
+        customProviderSecretStorageKey(config.id, agent),
+      );
+      await storeKey(config.id, agent, key);
+      staged.push({ agent, previous });
+    }
+    return staged;
+  } catch (error) {
+    try {
+      await restoreStagedKeys(config.id, staged);
+    } catch (rollbackError) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}; credential rollback failed: ${
+          rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+        }`,
+      );
+    }
+    throw error;
+  }
+}
+
 /** 新建：先写配置（reject 时不碰密钥），成功后存各 runtime 密钥（非空才存）。 */
 export async function createCustomProvider(
   config: CustomProviderConfig,
   keys: RuntimeKeys,
 ): Promise<void> {
   await window.electronAPI.maker.createCustomProvider(config);
-  if (!config.auth || config.auth.method === 'apiKey') await saveKeys(config.id, keys);
+  if (!config.auth || config.auth.method === 'apiKey') await saveKeys(config, keys);
 }
 
-/** 编辑：先写配置，再保存仍有效的新 key，并清理改成非 key 鉴权或已删除 runtime 的旧 key。 */
+/** 编辑：先保存替换 key，再写配置；失败恢复原 key，成功后清理不再有效的旧 key。 */
 export async function updateCustomProvider(
   config: CustomProviderConfig,
   keys: RuntimeKeys,
 ): Promise<void> {
-  await window.electronAPI.maker.updateCustomProvider(config);
   const usesApiKey = !config.auth || config.auth.method === 'apiKey';
+  const staged = usesApiKey ? await stageKeys(config, keys) : [];
+  try {
+    await window.electronAPI.maker.updateCustomProvider(config);
+  } catch (error) {
+    try {
+      await restoreStagedKeys(config.id, staged);
+    } catch (rollbackError) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}; credential rollback failed: ${
+          rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+        }`,
+      );
+    }
+    throw error;
+  }
   for (const agent of ALL_AGENTS) {
     if (!usesApiKey || !config.runtimes[agent]) await removeKey(config.id, agent);
   }
-  if (usesApiKey) await saveKeys(config.id, keys);
 }
 
 /** 删除：先删配置，再清所有 runtime 密钥（幂等，失败忽略）。 */

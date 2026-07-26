@@ -24,6 +24,7 @@ import {
 } from '@cindy/model-providers';
 
 import type { LocalCliDetection } from '../../shared/localCliDetect.js';
+import { isIpcError } from '../../shared/ipc-errors.js';
 
 import { throwIpcError } from '../utils/ipcValidate.js';
 import {
@@ -449,10 +450,11 @@ export function registerProviderHandlers(
         return { ok: result.ok, ...(result.reason ? { reason: result.reason } : {}) };
       }
       if (result.ok && result.rollbackCredentials && !result.rollbackCredentials()) {
-        throw new Error('failed to remove credentials from cancelled OAuth login');
+        throwIpcError('INTERNAL', 'failed to remove credentials from cancelled OAuth login');
       }
       return { ok: false, reason: 'login_cancelled' };
     } catch (err) {
+      if (isIpcError(err)) throw err;
       throwIpcError('INVALID_PARAMS', err instanceof Error ? err.message : String(err));
     } finally {
       finishOAuthMutation(id, generation);

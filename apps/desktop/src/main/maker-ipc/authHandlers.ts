@@ -101,6 +101,7 @@ export function registerMakerAuthHandlers(
   ) => void | Promise<void>,
 ): void {
   const mutationGeneration = new Map<AgentKind, number>();
+  const loginRequestGeneration = new Map<AgentKind, number>();
   const logoutFinalizations = new Map<AgentKind, Promise<void>>();
   const beginMutation = (kind: AgentKind): number => {
     const generation = (mutationGeneration.get(kind) ?? 0) + 1;
@@ -109,6 +110,13 @@ export function registerMakerAuthHandlers(
   };
   const isMutationCurrent = (kind: AgentKind, generation: number): boolean =>
     (mutationGeneration.get(kind) ?? 0) === generation;
+  const beginLoginRequest = (kind: AgentKind): number => {
+    const generation = (loginRequestGeneration.get(kind) ?? 0) + 1;
+    loginRequestGeneration.set(kind, generation);
+    return generation;
+  };
+  const isLoginRequestCurrent = (kind: AgentKind, generation: number): boolean =>
+    (loginRequestGeneration.get(kind) ?? 0) === generation;
   const waitForLatestLogoutFinalization = async (kind: AgentKind): Promise<void> => {
     while (true) {
       const observed = logoutFinalizations.get(kind);
@@ -135,12 +143,17 @@ export function registerMakerAuthHandlers(
     async (_e, agentKind: unknown, rawOptions?: unknown): Promise<AuthState> => {
       const kind = requireAgentKind(agentKind);
       const mode = requireLoginMode(kind, rawOptions);
+      // 先登记请求再等待注销收尾，使等待期间到达的 Cancel 也能作废这次登录。
+      // 此 generation 与 auth mutation 分离，避免排队登录反过来提前作废正在收尾的 logout。
+      const loginGeneration = beginLoginRequest(kind);
       // Adapter 会把注销期间到达的登录排在 CLI logout 后面；这里还必须等主进程完成
       // credential bridge / model snapshot 的注销收尾，再建立新的 mutation generation。
       // 否则新登录会提前作废旧 generation，导致注销回调被跳过。
       await waitForLatestLogoutFinalization(kind);
+      if (!isLoginRequestCurrent(kind, loginGeneration)) return supersededAuthState();
       const generation = beginMutation(kind);
-      const isCurrent = (): boolean => isMutationCurrent(kind, generation);
+      const isCurrent = (): boolean =>
+        isLoginRequestCurrent(kind, loginGeneration) && isMutationCurrent(kind, generation);
       const progressText = { stdout: '', stderr: '', other: '' };
       let emittedDeviceCode = '';
       const result = await maker.triggerAgentLogin(kind, {
@@ -196,7 +209,9 @@ export function registerMakerAuthHandlers(
   registry.handle(MAKER_INVOKE.AUTH_CANCEL_LOGIN, async (_e, agentKind: unknown): Promise<void> => {
     const kind = requireAgentKind(agentKind);
     // Cancel is an auth mutation too: invalidate handler-level refresh/finalization work even
-    // when the CLI process has already exited and the adapter is reconciling credentials.
+    // when the CLI process has already exited and the adapter is reconciling credentials. The
+    // separate login request generation also covers a request still queued behind logout.
+    beginLoginRequest(kind);
     beginMutation(kind);
     maker.cancelAgentLogin(kind);
   });
