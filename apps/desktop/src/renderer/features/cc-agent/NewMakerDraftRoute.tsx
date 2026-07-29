@@ -2450,7 +2450,7 @@ export function NewMakerDraftRoute() {
                     onEffortDidChange={handleEffortDidChange}
                     onPermissionModeDidChange={handlePermissionModeDidChange}
                     onProviderDidChange={handleProviderDidChange}
-                    vendorKey={draft.vendor === 'codex' ? 'codex' : 'cc'}
+                    vendorKey={normalizeDbAgentKind(draft.vendor)}
                     folderPickerOpen={folderPickerOpen}
                     onFolderPickerOpenChange={handleFolderPickerOpenChange}
                     showFolderPicker={false}
@@ -2458,7 +2458,7 @@ export function NewMakerDraftRoute() {
                       <VendorSegmentedSwitcher
                         value={draft.vendor}
                         onChange={handleVendorChange}
-                        width={150}
+                        width={225}
                         dense
                         visualVariant="create-agent"
                         className="shrink-0"
@@ -2508,7 +2508,7 @@ export function NewMakerDraftRoute() {
                       <VendorSegmentedSwitcher
                         value={draft.vendor}
                         onChange={handleVendorChange}
-                        width={72}
+                        width={108}
                         dense
                         iconOnly
                         visualVariant="create-agent"

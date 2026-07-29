@@ -1059,7 +1059,7 @@ export function stopOrcaIdleWatcher(): void {
 }
 
 function requireAgentKind(value: unknown): AgentKind {
-  if (value === 'claude-code' || value === 'codex') return value;
+  if (value === 'claude-code' || value === 'codex' || value === 'pi') return value;
   throwIpcError('INVALID_PARAMS', 'agentKind required');
 }
 
@@ -4273,7 +4273,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     const extraDirs = await readSessionExtraDirsFromDb(target.sessionId);
     const opts = buildCreateOptsWithStderr({
       id: row.id,
-      agentKind: row.agentKind === 'codex' ? 'codex' : 'claude-code',
+      agentKind: dbToMakerAgentKind(row.agentKind),
       workingDir: row.workingDir ?? '',
       model: row.model,
       effort: row.effort as CreateOpts['effort'],
@@ -4313,13 +4313,13 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     }
 
     await ensureRemoteHostReady(remoteHostIdToEnsure);
-    const ensureAgentKind: 'claude-code' | 'codex' | null =
-      session?.agentKind === 'codex' || session?.agentKind === 'claude-code'
+    const ensureAgentKind: 'claude-code' | 'codex' | 'pi' | null =
+      session?.agentKind === 'codex' || session?.agentKind === 'claude-code' || session?.agentKind === 'pi'
         ? session.agentKind
         : createOpts && typeof createOpts === 'object'
           ? (() => {
               const ak = (createOpts as { agentKind?: unknown }).agentKind;
-              return ak === 'codex' || ak === 'claude-code' ? ak : null;
+              return ak === 'codex' || ak === 'claude-code' || ak === 'pi' ? ak : null;
             })()
           : null;
     if (!ensureAgentKind) return;
@@ -4335,6 +4335,8 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       return;
     }
 
+    // pi 无远端(SSH)支持:capabilities 已拒 remote session,这里兜底跳过。
+    if (ensureAgentKind === 'pi') return;
     await ensureRemoteAgentInstalledOrInstall(remoteHostIdToEnsure, ensureAgentKind);
   }
 
@@ -4397,7 +4399,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
         .where(eq(sessions.id, sessionId))
         .limit(1);
       if (!row) return;
-      const dbMakerKind = row.agentKind === 'codex' ? 'codex' : 'claude-code';
+      const dbMakerKind = dbToMakerAgentKind(row.agentKind);
       if (co.agentKind !== dbMakerKind) {
         log.warn('lazy-create: createOpts agentKind drifted from DB (agent switch); reconciling', {
           sessionId,
@@ -4475,7 +4477,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
       }
       const co = buildCreateOptsWithStderr({
         id: sessionId,
-        agentKind: row.agentKind === 'codex' ? 'codex' : 'claude-code',
+        agentKind: dbToMakerAgentKind(row.agentKind),
         workingDir: row.workingDir,
         model: row.model ?? undefined,
         providerId: row.providerId ?? undefined,

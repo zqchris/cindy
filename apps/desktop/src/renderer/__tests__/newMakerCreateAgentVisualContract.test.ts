@@ -98,7 +98,7 @@ describe('NewMakerDraftRoute CREATE AGENT visual contract', () => {
       'onEffortDidChange={handleEffortDidChange}',
       'onPermissionModeDidChange={handlePermissionModeDidChange}',
       'onProviderDidChange={handleProviderDidChange}',
-      'vendorKey={draft.vendor ===',
+      'vendorKey={normalizeDbAgentKind(draft.vendor)}',
       'attachmentState={attachmentState}',
       'draftKey={NEW_MAKER_DRAFT_KEY}',
       'extraDirs={effectiveExtraDirs}',
