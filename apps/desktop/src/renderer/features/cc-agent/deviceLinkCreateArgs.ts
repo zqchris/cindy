@@ -14,8 +14,8 @@ import type { WorkspaceKind } from '@/lib/ccAgent.types';
 import type { Effort, PermissionMode } from '@/lib/userPreferences.types';
 
 export interface DeviceLinkCreateParams {
-  /** 草稿 vendor 形态:'cc' | 'codex'(persistedAgentKind)。 */
-  agentKind: 'cc' | 'codex';
+  /** 草稿 vendor 形态:'cc' | 'codex' | 'pi'(persistedAgentKind)。 */
+  agentKind: 'cc' | 'codex' | 'pi';
   /** 被控端上的项目目录(远程草稿必有)。 */
   workingDir: string;
   /**

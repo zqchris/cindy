@@ -24,6 +24,7 @@ import {
 } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useLocation, useNavigate, useOutletContext, useParams } from 'react-router-dom';
+import { normalizeDbAgentKind } from '../../../shared/agentKindConversion';
 import { useTranslation } from 'react-i18next';
 import type { AgentInputReference } from '@cindy/maker-shared/agent-input-projection';
 import { useProportionalWidth } from '@/hooks/useProportionalWidth';
@@ -1831,8 +1832,9 @@ export function CCAgentSessionView({
       .then((workers) => {
         if (cancelled || workers.length === 0) return;
         const activeWorker = workers[0]; // MVP: 假设最多 1 个 active Worker
-        const kind: 'cc' | 'codex' = activeWorker.session?.agentKind === 'codex' ? 'codex' : 'cc';
-        setCollabWorker(kind);
+        // orca worker 创建面未开 pi;万一读到脏值也按 codex 收敛,不撑开 toggle 契约。
+        const normalizedKind = normalizeDbAgentKind(activeWorker.session?.agentKind);
+        setCollabWorker(normalizedKind === 'cc' ? 'cc' : 'codex');
       })
       .catch(() => undefined);
     return () => {
@@ -1922,8 +1924,8 @@ export function CCAgentSessionView({
         : Promise.resolve();
       try {
         const workerAgent = form.agent;
-        const worker: 'cc' | 'codex' = workerAgent === 'codex' ? 'codex' : 'cc';
-        setCollabWorker(worker);
+        const normalizedWorker = normalizeDbAgentKind(workerAgent);
+        setCollabWorker(normalizedWorker === 'cc' ? 'cc' : 'codex');
         setCreateWorkerOpen(false);
         await makerApiFor(collabSessionId).enableOrca(collabSessionId, {
           workerAgent,
@@ -3482,7 +3484,7 @@ export function CCAgentSessionView({
                     </Tip>
                   )}
                   <TodaySpendChip
-                    vendorKey={displayAgentKind === 'codex' ? 'codex' : 'cc'}
+                    vendorKey={normalizeDbAgentKind(displayAgentKind)}
                     modelId={agentSwitchIntent?.model ?? session?.model ?? null}
                     providerId={
                       agentSwitchIntent
@@ -3499,7 +3501,7 @@ export function CCAgentSessionView({
                   <ContextCapacityRing
                     contextTokens={agentStatus.contextTokens}
                     model={agentSwitchIntent?.model ?? session?.model ?? ''}
-                    vendorKey={displayAgentKind === 'codex' ? 'codex' : 'cc'}
+                    vendorKey={normalizeDbAgentKind(displayAgentKind)}
                     sdkContextWindow={agentStatus.contextWindow}
                     deviceId={remoteDeviceId}
                     onCompact={
@@ -3956,7 +3958,7 @@ function formatTokenCount(n: number): string {
  */
 function getModelContextWindow(
   model: string,
-  vendorKey: 'cc' | 'codex',
+  vendorKey: 'cc' | 'codex' | 'pi',
   deviceId?: string,
 ): number | undefined {
   const found = getModelsForVendor(vendorKey, deviceId).find((m) => m.id === model);
@@ -3973,7 +3975,7 @@ function ContextCapacityRing({
 }: {
   contextTokens: number;
   model: string;
-  vendorKey: 'cc' | 'codex';
+  vendorKey: 'cc' | 'codex' | 'pi';
   /** SDK-reported context window; 0 = not yet known → use hardcoded fallback. */
   sdkContextWindow: number;
   /** device-link 远程会话所属被控端 id;按被控端能力查 contextWindow(本机会话 undefined,行为不变)。 */

@@ -1,6 +1,6 @@
 import type { SessionSource } from './sessionSource';
 
-export type ConversationSearchAgentKind = 'cc' | 'codex';
+export type ConversationSearchAgentKind = 'cc' | 'codex' | 'pi';
 export type ConversationSearchWorkspaceKind = 'project' | 'dialogue';
 export type ConversationSearchSessionStatus = 'active' | 'archived' | 'deleted';
 export type ConversationSearchOrcaRole = 'lead' | 'worker';
