@@ -504,7 +504,12 @@ function computeMerged(): Catalog {
     for (const gm of gwModels) {
       // tab 归属:服务端 agents > 仅 claude-code(网关 /v1/messages 翻译覆盖面最广,不猜)
       const targetAgents: AgentKind[] =
-        gm.agents && gm.agents.length > 0 ? gm.agents : ['claude-code'];
+        gm.agents && gm.agents.length > 0 ? [...gm.agents] : ['claude-code'];
+      // pi 走网关 anthropic-messages 协议,可达面与 claude-code 相同;服务端目录
+      // 尚无 pi 概念,客户端按 claude-code 归属镜像(服务端显式声明 pi 后自然覆盖)。
+      if (targetAgents.includes('claude-code') && !targetAgents.includes('pi')) {
+        targetAgents.push('pi');
+      }
       for (const agent of targetAgents) {
         if (!models[agent]) continue; // 未知 agent 键防御(wire 数据)
         const ov = gm.perAgent?.[agent] ?? {};

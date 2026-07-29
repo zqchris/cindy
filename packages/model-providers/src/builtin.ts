@@ -82,7 +82,7 @@ const XD_PROVIDER: Provider = {
   id: 'xd',
   name: 'XD Gateway',
   source: 'builtin',
-  agents: ['claude-code', 'codex'],
+  agents: ['claude-code', 'codex', 'pi'],
   auth: { method: 'managed' },
   access: { kind: 'managed' },
   titleModel: 'gpt-5.4-mini',
@@ -117,8 +117,13 @@ const XD_PROVIDER: Provider = {
       upstream: 'https://xd-gateway.invalid/v1',
       authStrategy: 'gateway-key',
     },
+    // pi 直连网关 anthropic-messages 面(与 claude-code 同可达面);upstream 同为占位。
+    pi: {
+      upstream: 'https://xd-gateway.invalid',
+      authStrategy: 'gateway-key',
+    },
   },
-  models: { 'claude-code': [], codex: [] },
+  models: { 'claude-code': [], codex: [], pi: [] },
 };
 
 /** 内置供应商(顺序契约见文件头)。 */
