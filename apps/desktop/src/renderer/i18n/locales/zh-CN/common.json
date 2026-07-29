@@ -4157,6 +4157,7 @@
         "agent": {
           "claudeCode": "Claude Code",
           "codex": "Codex",
+          "pi": "Pi",
           "pending": "下条：{{agent}}"
         }
       },
