@@ -1,0 +1,9 @@
+{
+  "ghosts": {
+    "my-browser": {
+      "audience": {
+        "emails": []
+      }
+    }
+  }
+}

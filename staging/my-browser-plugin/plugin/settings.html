@@ -1,0 +1,56 @@
+<!doctype html>
+<meta charset="utf-8">
+<body style="margin:0;padding:12px;line-height:1.55">
+  <div id="status" style="padding:9px 11px;border-radius:8px;margin-bottom:14px;font-size:13px;
+       background:var(--surface,#f6f6f4);border:1px solid var(--border-default,#e4e4e0)">…</div>
+
+  <section id="install" style="margin-bottom:16px;display:none">
+    <div style="font-weight:600;margin-bottom:4px" data-i18n="installTitle"></div>
+    <div style="font-size:12px;opacity:.75;margin-bottom:8px" data-i18n="installBody"></div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <code id="extdir" style="flex:1;min-width:0;padding:6px 8px;border-radius:6px;font-size:11px;
+            overflow:auto;white-space:nowrap;background:var(--surface,#fff);
+            border:1px solid var(--border-default,#e4e4e0)"></code>
+      <button id="copy" style="padding:6px 12px;border-radius:6px;cursor:pointer;white-space:nowrap;
+              background:var(--surface,#fff);color:inherit;
+              border:1px solid var(--border-default,#e4e4e0)" data-i18n="copy"></button>
+    </div>
+  </section>
+
+  <section style="margin-bottom:16px">
+    <div style="font-weight:600;margin-bottom:4px" data-i18n="interactTitle"></div>
+    <div style="font-size:12px;opacity:.75;margin-bottom:8px" data-i18n="interactBody"></div>
+    <div id="interact-list" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px">
+      <input id="interact-input" data-i18n-ph="hostPlaceholder"
+             style="flex:1;min-width:0;padding:6px 8px;border-radius:6px;background:var(--surface,#fff);
+                    color:inherit;border:1px solid var(--border-default,#e4e4e0)">
+      <button id="interact-add" style="padding:6px 12px;border-radius:6px;cursor:pointer;
+              background:var(--surface,#fff);color:inherit;
+              border:1px solid var(--border-default,#e4e4e0)" data-i18n="add"></button>
+    </div>
+  </section>
+
+  <section style="margin-bottom:16px">
+    <div style="font-weight:600;margin-bottom:4px" data-i18n="readTitle"></div>
+    <div style="font-size:12px;opacity:.75;margin-bottom:8px" data-i18n="readBody"></div>
+    <div id="read-list" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px">
+      <input id="read-input" data-i18n-ph="hostPlaceholder"
+             style="flex:1;min-width:0;padding:6px 8px;border-radius:6px;background:var(--surface,#fff);
+                    color:inherit;border:1px solid var(--border-default,#e4e4e0)">
+      <button id="read-add" style="padding:6px 12px;border-radius:6px;cursor:pointer;
+              background:var(--surface,#fff);color:inherit;
+              border:1px solid var(--border-default,#e4e4e0)" data-i18n="add"></button>
+    </div>
+  </section>
+
+  <div style="display:flex;align-items:center;gap:10px">
+    <button id="save" style="padding:7px 16px;border-radius:6px;cursor:pointer;font-weight:600;
+            background:var(--surface,#fff);color:inherit;
+            border:1px solid var(--border-default,#e4e4e0)" data-i18n="save"></button>
+    <span id="hint" style="font-size:12px;opacity:.75"></span>
+  </div>
+
+  <script src="/settings.js"></script>
+</body>
