@@ -145,6 +145,8 @@ function headerValue(headers: Readonly<Record<string, string>>, name: string): s
  */
 export function createModelRoutingTransform(): RoutingTransform {
   return (body, ctx) => {
+    const piSessionId = headerValue(ctx.headers, 'x-cindy-pi-session-id');
+    const requestAgent = piSessionId ? 'pi' : 'claude-code';
     // 后台活动检测(claude-session-background-activity):凡带 cc 会话标头的请求
     // 都记一笔活动时刻。注意 routingTransform 只在 JSON POST 上被调用(server.ts
     // 按 content-type 门控),GET / 非 JSON 请求不经过这里 —— 它们由响应侧的
@@ -177,7 +179,9 @@ export function createModelRoutingTransform(): RoutingTransform {
       // 会话态(思维深度 / Fast)在决策点解析后**闭包**进 handler —— CC 不会把 bridge 模型的
       // effort / fast 放进请求体,而引擎保持零会话概念,不走任何伪 header。
       const sdkSessionId = ctx.headers['x-claude-code-session-id'];
-      const xdtSessionId = sdkSessionId && _resolveCcSessionId ? _resolveCcSessionId(sdkSessionId) : null;
+      const xdtSessionId =
+        piSessionId ??
+        (sdkSessionId && _resolveCcSessionId ? _resolveCcSessionId(sdkSessionId) : null);
       const effort = xdtSessionId ? getSessionEffort(xdtSessionId) : null;
       const fast = xdtSessionId ? getSessionFastMode(xdtSessionId) : false;
       return {
@@ -191,14 +195,14 @@ export function createModelRoutingTransform(): RoutingTransform {
     // ① 该会话显式选了供应商 → 据 catalog 统一路由。
     //    x-claude-code-session-id = cc sdkSessionId,经注入的 resolver 反解成 xdt sessionId。
     const sdkSessionId = ctx.headers['x-claude-code-session-id'];
-    const sessionId = sdkSessionId && _resolveCcSessionId
-      ? _resolveCcSessionId(sdkSessionId)
-      : null;
+    const sessionId =
+      piSessionId ??
+      (sdkSessionId && _resolveCcSessionId ? _resolveCcSessionId(sdkSessionId) : null);
     if (sessionId) {
       // wireModel 传给 scope 门:cc 内部辅助调用(权限 auto 分类器等 claude-* 小模型请求)
       // 不在订阅直连供应商(xai / openai-cc)声明的 modelPrefixes 范围内 → 返回 null,
       // 落到下方 ② 段 spawn 默认路由,分类器照常走网关/直连(issue #886)。
-      const perSession = resolveSessionRouteDecision(sessionId, 'claude-code', gatewayKey, wireModel);
+      const perSession = resolveSessionRouteDecision(sessionId, requestAgent, gatewayKey, wireModel);
       if (perSession) return perSession;
     }
 
@@ -220,7 +224,7 @@ export function createModelRoutingTransform(): RoutingTransform {
       if (recordDefaultRoute) recordClaudeSessionRoute(sessionId, 'gateway');
       return null;
     }
-    const decision = gatewayDefaultRouteDecision('claude-code', gatewayKey);
+    const decision = gatewayDefaultRouteDecision(requestAgent, gatewayKey);
     if (decision) {
       // oauth-spawn 默认:全量换网关 key(防订阅 token 泄漏到网关)。
       if (recordDefaultRoute) recordClaudeSessionRoute(sessionId, 'gateway');

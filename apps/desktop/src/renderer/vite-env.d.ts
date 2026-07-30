@@ -3102,12 +3102,12 @@ interface ElectronAPI {
     cb: (data: {
       sessionId: string;
       clientId: string;
-      turnMoney: import('../shared/regionalMoney').RegionalMoney;
+      turnMoney?: import('../shared/regionalMoney').RegionalMoney;
       turnCostUsd?: number;
-      turnCostIsEstimate: boolean;
-      userTurnMoney: import('../shared/regionalMoney').RegionalMoney;
+      turnCostIsEstimate?: boolean;
+      userTurnMoney?: import('../shared/regionalMoney').RegionalMoney;
       userTurnCostUsd?: number;
-      userTurnCostIsEstimate: boolean;
+      userTurnCostIsEstimate?: boolean;
       turnUsageDetails?: import('../shared/turnUsageDetails').TurnUsageDetails;
     }) => void,
   ) => () => void;

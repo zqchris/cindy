@@ -4059,7 +4059,7 @@ function initGlobalListeners(): void {
       (legacyTurnCostUsd !== undefined
         ? legacyUsdMoney(legacyTurnCostUsd)
         : undefined);
-    if (!turnMoney || !(turnMoney.amount > 0)) return;
+    if ((!turnMoney || !(turnMoney.amount > 0)) && !turnUsageDetails) return;
     const { sessionId, clientId } = p;
     const userTurnMoney =
       normalizeRegionalMoney(p.userTurnMoney) ??
@@ -4071,7 +4071,7 @@ function initGlobalListeners(): void {
         ? p.userTurnCostUsd
         : undefined;
     const resolvedTurnCostUsd =
-      turnMoney.currency === 'USD'
+      turnMoney?.currency === 'USD'
         ? turnMoney.amount
         : undefined;
     setState(sessionId, (s) => {
@@ -4080,11 +4080,15 @@ function initGlobalListeners(): void {
       const msgs = s.messages.slice();
       msgs[idx] = {
         ...msgs[idx],
-        turnMoney,
-        ...(resolvedTurnCostUsd !== undefined
-          ? { turnCostUsd: resolvedTurnCostUsd }
+        ...(turnMoney && turnMoney.amount > 0
+          ? {
+              turnMoney,
+              ...(resolvedTurnCostUsd !== undefined
+                ? { turnCostUsd: resolvedTurnCostUsd }
+                : {}),
+              turnCostIsEstimate,
+            }
           : {}),
-        turnCostIsEstimate,
         ...(userTurnMoney
           ? {
               userTurnMoney,

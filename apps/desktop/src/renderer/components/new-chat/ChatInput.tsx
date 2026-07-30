@@ -1200,6 +1200,13 @@ export function ChatInput({
   // device-link 远程会话:能力(模型 / fast / effort)从被控端读;本地会话 deviceLinkDeviceId undefined → 本地。
   const ccCaps = useAgentCapabilities('claude-code', deviceLinkDeviceId);
   const codexCaps = useAgentCapabilities('codex', deviceLinkDeviceId);
+  const piCaps = useAgentCapabilities('pi', deviceLinkDeviceId);
+  const activeAgentCapabilities =
+    agentKind === 'codex'
+      ? codexCaps.capabilities
+      : agentKind === 'pi'
+        ? piCaps.capabilities
+        : ccCaps.capabilities;
 
   // cycle-permission-mode 快捷键 (默认 Shift+Tab) 的轮切候选 —— 与
   // PermissionSelector 用同一份 capabilities.permissionModes 列表, 键盘轮切
@@ -1207,10 +1214,8 @@ export function ChatInput({
   // 默认取 cc。editorProps.handleKeyDown 是稳定闭包, 走 ref 取值。
   const permissionCycleOptions = useMemo(
     () =>
-      ((agentKind ?? 'claude-code') === 'codex'
-        ? codexCaps.capabilities?.permissionModes
-        : ccCaps.capabilities?.permissionModes) ?? [],
-    [agentKind, ccCaps.capabilities, codexCaps.capabilities],
+      activeAgentCapabilities?.permissionModes ?? [],
+    [activeAgentCapabilities],
   );
   const permissionCycleOptionsRef = useRef(permissionCycleOptions);
   permissionCycleOptionsRef.current = permissionCycleOptions;
@@ -1223,7 +1228,7 @@ export function ChatInput({
 
   // 计划模式入口门控:agent capability(device-link 老被控端无此字段 → 隐藏)+ 父组件接线。
   const planModeSupported =
-    (vendorKey === 'codex' ? codexCaps : ccCaps).capabilities?.planMode?.supported === true;
+    activeAgentCapabilities?.planMode?.supported === true;
   const planModeEntry =
     planModeSupported && onPlanModeChange
       ? { enabled: planModeEnabled, onToggle: (next: boolean) => void onPlanModeChange(next) }
@@ -1239,8 +1244,11 @@ export function ChatInput({
     if ((codexCaps.capabilities?.availableModels ?? []).some((m) => m.id === activeModel)) {
       return 'codex';
     }
+    if ((piCaps.capabilities?.availableModels ?? []).some((m) => m.id === activeModel)) {
+      return 'pi';
+    }
     return null;
-  }, [activeModel, agentKind, ccCaps.capabilities, codexCaps.capabilities]);
+  }, [activeModel, agentKind, ccCaps.capabilities, codexCaps.capabilities, piCaps.capabilities]);
   // 供应商连接态。effectiveSourceId / sendProviderId / dispatchSend 预检用它。device-link 远程会话 /
   // 草稿用**被控端**供应商目录(隧道),否则用本机(两 hook 都无条件调用,按 deviceLinkDeviceId 取)。
   const localProviders = useProviders();
@@ -3634,7 +3642,11 @@ export function ChatInput({
         deviceProviders: remoteProviders.providers,
         localProviders: localProviders.providers,
         capabilities:
-          currentModelAgentKind === 'codex' ? codexCaps.capabilities : ccCaps.capabilities,
+          currentModelAgentKind === 'codex'
+            ? codexCaps.capabilities
+            : currentModelAgentKind === 'pi'
+              ? piCaps.capabilities
+              : ccCaps.capabilities,
         providerId,
         modelId: targetModelId,
         agentKind: currentModelAgentKind,
@@ -3646,6 +3658,7 @@ export function ChatInput({
       currentModelAgentKind,
       ccCaps.capabilities,
       codexCaps.capabilities,
+      piCaps.capabilities,
     ],
   );
 
@@ -3678,7 +3691,8 @@ export function ChatInput({
       const remoteDeviceId =
         opts.remoteDeviceId ?? getSessionDeviceId(sessionId) ?? deviceLinkDeviceId;
       if (!remoteDeviceId) {
-        const vendor = currentModelAgentKind === 'codex' ? 'codex' : 'cc';
+        const vendor =
+          currentModelAgentKind === 'codex' ? 'codex' : currentModelAgentKind === 'pi' ? 'pi' : 'cc';
         patchVendorPrefsPreservingModelChoice(vendor, {
           model: modelId,
           providerId: activeProviderId ?? null,
@@ -3918,7 +3932,11 @@ export function ChatInput({
                 deviceProviders: remoteProviders.providers,
                 localProviders: localProviders.providers,
                 capabilities:
-                  targetAgentKind === 'codex' ? codexCaps.capabilities : ccCaps.capabilities,
+                  targetAgentKind === 'codex'
+                    ? codexCaps.capabilities
+                    : targetAgentKind === 'pi'
+                      ? piCaps.capabilities
+                      : ccCaps.capabilities,
                 providerId,
                 modelId: newModelId,
                 agentKind: targetAgentKind,

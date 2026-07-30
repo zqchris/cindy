@@ -64,6 +64,7 @@ import { genericOAuthSecretIo, addProviderSecretsClearedListener } from '../secr
 import { readClaudeApiKey, desktopCodexAuthAdapter } from './auth-adapters.js';
 import { readCustomProviderKey } from '../secrets/providerSecretStore.js';
 import { hasClaudeAiOAuth, hasClaudeAiOAuthUnbound } from './claude-credentials-store.js';
+import { getValidClaudeAiOAuth } from './claude-oauth-refresh.js';
 import {
   getGrokAccessToken,
   hasGrokOAuthLogin,
@@ -217,7 +218,13 @@ export function ensureActiveCatalogLoaded(): Promise<Catalog> {
   // 接通自定义供应商密钥读取器（idempotent）：provider-route 用 setter 注入避免触电，
   // 这里在路由发生前（splash 早于任何 turn）把真实 safeStorage 读取接进去。
   setCustomProviderKeyReader(readCustomProviderKey);
-  setProviderOAuthTokenReader((providerId) => (providerId === 'xai' ? getGrokAccessToken() : null));
+  setProviderOAuthTokenReader(async (providerId, agent) => {
+    if (providerId === 'xai') return getGrokAccessToken();
+    if (providerId === 'anthropic' && agent === 'pi') {
+      return (await getValidClaudeAiOAuth())?.accessToken ?? null;
+    }
+    return null;
+  });
   // 测试连接探测与路由同源读 key（同 setter 模式，见 provider-diagnostics.ts）。
   setDiagnosticsKeyReader(readCustomProviderKey);
   // 通用 OAuth Runner 接线（idempotent）：safeStorage blob IO + 系统浏览器拉起;
