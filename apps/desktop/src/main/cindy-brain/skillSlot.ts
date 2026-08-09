@@ -15,10 +15,10 @@
  * - **绝不误伤**:只删"确认为 symlink/junction 且目标落在 cindy-brain 安装根"
  *   的条目。真实目录(SkillHub 实体技能、用户手放的技能)与外来链接一律不碰,
  *   占位冲突只 warn 不覆盖(同 shared-global-skills 的冲突哲学)。
- * - **`.claude` 扇出与回收都不归这里管**:对账后调 prepareSharedGlobalSkillLinks,
- *   它负责把 `.agents` 新条目 link 进 `.claude`;我们撤链后留下的 `.claude`
- *   悬空兼容链接目标指向 `.agents` 受管根,同样由它的 cleanupBrokenManagedLinks
- *   回收——职责分界干净:目标在 brainRoot 的链接归本文件,受管根内的归它。
+ * - **不向别的 harness 整体扇出**:对账后调 prepareSharedGlobalSkillLinks,只对账
+ *   用户在 Cindy bridge 配置里逐项声明的共享技能,且只回收带 Cindy 所有权记录
+ *   的旧链接。Cindy 插件 Skill 仍以 `.agents` 中的受管链接作为稳定索引,随后由
+ *   Cindy 隔离 runtime 逐项直连,不会混入 Claude/Codex 的原生 Skill 根。
  * - 多账号:brainRoot 是 owner-scoped,`~/.agents/skills` 是全局的。本函数只
  *   管理 realpath 落在**当前 brainRoot** 内的活链接;他 owner 的活链接不碰
  *   (与 SkillHub 实体技能同一跨账号可见性现状)。悬空链接只要目标带
@@ -263,16 +263,15 @@ export async function reconcileGhostSkillLinks(
     }
   }
 
-  // —— 扇出:`.agents` 条目 → `.claude` 兼容链接;撤链留下的 `.claude` 悬空
-  //    兼容链接(目标在受管根内)也由它回收。每次对账都跑(兼容链接可能独立
-  //    缺失——canonical 正常但 .claude 侧被删或上次扇出失败);幂等、失败不阻断。
+  // —— 跨 harness bridge 对账:只创建显式配置的单 Skill 链接,只回收 Cindy 有
+  //    所有权记录的链接。默认隔离,幂等且失败不阻断插件自身的 `.agents` 索引对账。
   try {
-    const fanout = await prepareSharedGlobalSkillLinks(
+    const bridges = await prepareSharedGlobalSkillLinks(
       opts.homeDir !== undefined ? { homeDir: opts.homeDir } : {},
     );
-    warnings.push(...fanout.warnings);
+    warnings.push(...bridges.warnings);
   } catch (err) {
-    warnings.push(`共享技能链接扇出失败:${(err as Error).message}`);
+    warnings.push(`共享技能 bridge 对账失败:${(err as Error).message}`);
   }
 
   return { changed, actions, warnings };

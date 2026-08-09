@@ -1055,8 +1055,8 @@ export class DesktopCodexAuthAdapter implements AuthAdapter {
   }
 
   private async runEnsureGlobalCodexAssets(): Promise<void> {
-    // Load-bearing order: Codex skill linking scans ~/.agents/skills, so shared
-    // links must populate that directory before prepareCodexGlobalSkillsLinks runs.
+    // Reconcile native harness bridges first so Cindy's isolated runtime sees the
+    // final explicit source links, never a whole imported harness root.
     const sharedOutcome = await prepareSharedGlobalSkillLinks().then(
       (r) => ({ ok: true as const, label: 'shared-skills' as const, warnings: r.warnings }),
       (err: Error) => ({ ok: false as const, label: 'shared-skills' as const, err }),

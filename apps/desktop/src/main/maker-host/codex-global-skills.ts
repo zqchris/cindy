@@ -3,31 +3,30 @@ import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
 import {
-  ensureDirectoryLink,
-  isDirectory,
-  isSameOrInside,
+  normalizeForCompare,
   realPathOrNull,
-  removeManagedLink,
-  type ManagedLinkStatus,
 } from './managed-dir-links.js';
+import {
+  reconcileGlobalSkillBridges,
+  type SkillBridgeLinkStatus,
+} from './global-skill-bridges.js';
 
 export const CODEX_LEGACY_CODEX_SKILLS_LINK_NAME = 'xdt-codex';
 export const CODEX_SHARED_AGENTS_SKILLS_LINK_NAME = 'xdt-agents';
 
-type SourceName = 'codex' | 'agents';
-type LinkStatus = ManagedLinkStatus;
-
 export interface CodexGlobalSkillSourceResult {
-  name: SourceName;
+  name: string;
   source: string;
   link: string;
-  status: LinkStatus;
+  status: SkillBridgeLinkStatus;
   reason?: string;
 }
 
 export interface CodexGlobalSkillsPrepareResult {
   codexHome: string;
   skillsDir: string;
+  configPath: string;
+  statePath: string;
   changed: boolean;
   sources: CodexGlobalSkillSourceResult[];
   warnings: string[];
@@ -35,37 +34,114 @@ export interface CodexGlobalSkillsPrepareResult {
 
 interface PrepareOptions {
   homeDir?: string;
+  bridgeConfigPath?: string;
+  bridgeStatePath?: string;
 }
 
-async function cleanupLegacyAggregate(codexHome: string): Promise<void> {
-  const legacyScanEntry = path.join(codexHome, 'skills', 'xdt-global');
-  await removeManagedLink(legacyScanEntry);
+async function legacyLinkMatchesExpected(
+  linkPath: string,
+  expectedTarget: string,
+): Promise<boolean> {
+  const [linkReal, targetReal] = await Promise.all([
+    realPathOrNull(linkPath),
+    realPathOrNull(expectedTarget),
+  ]);
+  if (linkReal && targetReal && linkReal === targetReal) return true;
 
+  try {
+    const rawTarget = await fsp.readlink(linkPath);
+    const resolvedTarget = path.isAbsolute(rawTarget)
+      ? rawTarget
+      : path.resolve(path.dirname(linkPath), rawTarget);
+    return normalizeForCompare(resolvedTarget) === normalizeForCompare(expectedTarget);
+  } catch {
+    return false;
+  }
+}
+
+async function removeLegacyLinkIfExpected(
+  linkPath: string,
+  expectedTarget: string,
+): Promise<{ changed: boolean; warning?: string }> {
+  let stat;
+  try {
+    stat = await fsp.lstat(linkPath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { changed: false };
+    throw err;
+  }
+  if (!stat.isSymbolicLink()) {
+    return {
+      changed: false,
+      warning: `reserved legacy skill path is user-owned and was not removed: ${linkPath}`,
+    };
+  }
+
+  if (!(await legacyLinkMatchesExpected(linkPath, expectedTarget))) {
+    return {
+      changed: false,
+      warning: `reserved legacy skill link points elsewhere and was not removed: ${linkPath}`,
+    };
+  }
+
+  await fsp.rm(linkPath, { recursive: true, force: true });
+  return { changed: true };
+}
+
+async function cleanupLegacyAggregate(
+  codexHome: string,
+  legacyCodexSkillsDir: string,
+  sharedAgentsSkillsDir: string,
+): Promise<{ changed: boolean; warnings: string[] }> {
+  const legacyScanEntry = path.join(codexHome, 'skills', 'xdt-global');
   const legacyAggregateDir = path.join(codexHome, 'global_skills');
+  const scanCleanup = await removeLegacyLinkIfExpected(legacyScanEntry, legacyAggregateDir);
+  let changed = scanCleanup.changed;
+  const warnings = scanCleanup.warning ? [scanCleanup.warning] : [];
   let entries: string[];
   try {
     entries = await fsp.readdir(legacyAggregateDir);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { changed, warnings };
     throw err;
   }
 
-  const removableNames = new Set(['codex', 'agents']);
+  const removableTargets = new Map([
+    ['codex', legacyCodexSkillsDir],
+    ['agents', sharedAgentsSkillsDir],
+  ]);
   for (const entry of entries) {
-    if (!removableNames.has(entry)) return;
+    const expectedTarget = removableTargets.get(entry);
+    if (!expectedTarget) return { changed, warnings };
     const entryPath = path.join(legacyAggregateDir, entry);
     try {
       const stat = await fsp.lstat(entryPath);
-      if (!stat.isSymbolicLink()) return;
+      if (!stat.isSymbolicLink()) {
+        warnings.push(
+          `reserved legacy aggregate path is user-owned and was not removed: ${entryPath}`,
+        );
+        return { changed, warnings };
+      }
     } catch {
-      return;
+      return { changed, warnings };
+    }
+    if (!(await legacyLinkMatchesExpected(entryPath, expectedTarget))) {
+      warnings.push(
+        `reserved legacy aggregate link points elsewhere and was not removed: ${entryPath}`,
+      );
+      return { changed, warnings };
     }
   }
 
   for (const entry of entries) {
     await fsp.rm(path.join(legacyAggregateDir, entry), { recursive: true, force: true });
+    changed = true;
   }
-  await fsp.rmdir(legacyAggregateDir).catch(() => undefined);
+  await fsp.rmdir(legacyAggregateDir).then(
+    () => { changed = true; },
+    () => undefined,
+  );
+  return { changed, warnings };
 }
 
 export function codexGlobalSkillsPaths(codexHome: string, homeDir = os.homedir()) {
@@ -90,41 +166,45 @@ export async function prepareCodexGlobalSkillsLinks(
 
   const warnings: string[] = [];
   let changed = false;
-  await cleanupLegacyAggregate(paths.codexHome);
-
-  const skillsDirReal = await realPathOrNull(paths.skillsDir);
-  const sourceDefs: Array<{ name: SourceName; source: string; link: string }> = [
-    { name: 'codex', source: paths.legacyCodexSkillsDir, link: paths.legacyCodexSkillsLink },
-    { name: 'agents', source: paths.sharedAgentsSkillsDir, link: paths.sharedAgentsSkillsLink },
-  ];
-
-  const sources: CodexGlobalSkillSourceResult[] = [];
-  for (const sourceDef of sourceDefs) {
-    if (!(await isDirectory(sourceDef.source))) {
-      changed = (await removeManagedLink(sourceDef.link)) || changed;
-      sources.push({ ...sourceDef, status: 'missing', reason: 'source directory does not exist' });
-      continue;
-    }
-
-    const sourceReal = await realPathOrNull(sourceDef.source);
-    if (sourceReal && skillsDirReal && isSameOrInside(sourceReal, skillsDirReal)) {
-      sources.push({ ...sourceDef, status: 'skipped', reason: 'source would create a scan cycle' });
-      continue;
-    }
-
-    const result = await ensureDirectoryLink(sourceDef.link, sourceDef.source);
-    changed = changed || result.changed;
-    sources.push({ ...sourceDef, status: result.status, reason: result.reason });
-    if (result.status === 'conflict' || result.status === 'error') {
-      warnings.push(
-        `cannot link Codex ${sourceDef.name} skills from ${sourceDef.source}: ${result.reason ?? result.status}`,
-      );
-    }
+  const aggregateCleanup = await cleanupLegacyAggregate(
+    paths.codexHome,
+    paths.legacyCodexSkillsDir,
+    paths.sharedAgentsSkillsDir,
+  );
+  changed = aggregateCleanup.changed || changed;
+  warnings.push(...aggregateCleanup.warnings);
+  for (const [linkPath, expectedTarget] of [
+    [paths.legacyCodexSkillsLink, paths.legacyCodexSkillsDir],
+    [paths.sharedAgentsSkillsLink, paths.sharedAgentsSkillsDir],
+  ] as const) {
+    const result = await removeLegacyLinkIfExpected(linkPath, expectedTarget);
+    changed = result.changed || changed;
+    if (result.warning) warnings.push(result.warning);
   }
+
+  const bridgeResult = await reconcileGlobalSkillBridges({
+    ...(opts.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
+    ...(opts.bridgeConfigPath !== undefined ? { configPath: opts.bridgeConfigPath } : {}),
+    ...(opts.bridgeStatePath !== undefined ? { statePath: opts.bridgeStatePath } : {}),
+    targets: { cindy: paths.skillsDir },
+    includeCindyPluginSkills: true,
+  });
+  changed = bridgeResult.changed || changed;
+  warnings.push(...bridgeResult.warnings);
+
+  const sources: CodexGlobalSkillSourceResult[] = bridgeResult.actions.map((action) => ({
+    name: action.name,
+    source: action.source,
+    link: action.target,
+    status: action.status,
+    ...(action.reason ? { reason: action.reason } : {}),
+  }));
 
   return {
     codexHome: paths.codexHome,
     skillsDir: paths.skillsDir,
+    configPath: bridgeResult.configPath,
+    statePath: bridgeResult.statePath,
     changed,
     sources,
     warnings,

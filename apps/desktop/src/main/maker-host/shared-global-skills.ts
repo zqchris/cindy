@@ -2,7 +2,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fsp } from 'node:fs';
 
-type LinkStatus = 'linked' | 'kept' | 'conflict' | 'skipped' | 'error';
+import {
+  reconcileGlobalSkillBridges,
+  type SkillBridgeLinkStatus,
+} from './global-skill-bridges.js';
+
+type LinkStatus = SkillBridgeLinkStatus;
 
 type SkillRootName = 'shared' | 'claude' | 'codex';
 
@@ -27,6 +32,8 @@ export interface SharedGlobalSkillLinksResult {
   sharedSkillsDir: string;
   claudeSkillsDir: string;
   codexSkillsDir: string;
+  configPath: string;
+  statePath: string;
   changed: boolean;
   actions: LinkAction[];
   warnings: string[];
@@ -34,6 +41,8 @@ export interface SharedGlobalSkillLinksResult {
 
 interface PrepareOptions {
   homeDir?: string;
+  bridgeConfigPath?: string;
+  bridgeStatePath?: string;
 }
 
 export interface SharedProjectSkillLinksResult {
@@ -305,64 +314,34 @@ async function linkEntriesIntoRoot(
 }
 
 /**
- * Makes global skills usable from both Claude Code and Codex without moving user data.
+ * Reconciles the small, explicit set of global skills shared across agent harnesses.
  *
- * Rules:
- * - ~/.agents/skills is the shared index that Cindy Codex already scans.
- * - Existing ~/.claude/skills entries are linked into ~/.agents/skills so Codex can see them.
- * - ~/.agents/skills and ~/.codex/skills entries are linked into ~/.claude/skills so Claude can see them.
- * - Existing non-symlink paths are never overwritten.
+ * Each harness keeps its native skill root private. Cross-harness links are created only
+ * when listed in `~/.config/cindy/skill-bridges.json`. Cindy records ownership of links it
+ * creates and only removes those managed entries; real directories and user links are untouched.
  */
 export async function prepareSharedGlobalSkillLinks(
   opts: PrepareOptions = {},
 ): Promise<SharedGlobalSkillLinksResult> {
   const paths = sharedGlobalSkillsPaths(opts.homeDir);
-  await fsp.mkdir(paths.sharedSkillsDir, { recursive: true });
-  await fsp.mkdir(paths.claudeSkillsDir, { recursive: true });
-  const sharedRootCompare = (await realPathOrNull(paths.sharedSkillsDir)) ?? normalizeForCompare(paths.sharedSkillsDir);
-  const claudeRootCompare = (await realPathOrNull(paths.claudeSkillsDir)) ?? normalizeForCompare(paths.claudeSkillsDir);
-  const codexRootCompare = (await realPathOrNull(paths.codexSkillsDir)) ?? normalizeForCompare(paths.codexSkillsDir);
-
-  const warnings: string[] = [];
-  const actions: LinkAction[] = [];
-  let changed = false;
-  const managedRoots = Array.from(new Set([
-    sharedRootCompare,
-    claudeRootCompare,
-    codexRootCompare,
-    normalizeForCompare(paths.sharedSkillsDir),
-    normalizeForCompare(paths.claudeSkillsDir),
-    normalizeForCompare(paths.codexSkillsDir),
-  ]));
-
-  changed = (await cleanupBrokenManagedLinks(paths.sharedSkillsDir, managedRoots)) || changed;
-  changed = (await cleanupBrokenManagedLinks(paths.claudeSkillsDir, managedRoots)) || changed;
-
-  const initialClaudeEntries = (await listSkillEntries('claude', paths.claudeSkillsDir))
-    .filter((entry) => !(entry.isSymlink && pointsInto(entry, [sharedRootCompare, codexRootCompare])));
-  const claudeToShared = await linkEntriesIntoRoot(initialClaudeEntries, paths.sharedSkillsDir);
-  actions.push(...claudeToShared.actions);
-  warnings.push(...claudeToShared.warnings);
-  changed = changed || claudeToShared.changed;
-
-  const sharedEntries = await listSkillEntries('shared', paths.sharedSkillsDir);
-  const sharedToClaude = await linkEntriesIntoRoot(sharedEntries, paths.claudeSkillsDir);
-  actions.push(...sharedToClaude.actions);
-  warnings.push(...sharedToClaude.warnings);
-  changed = changed || sharedToClaude.changed;
-
-  const codexEntries = (await listSkillEntries('codex', paths.codexSkillsDir))
-    .filter((entry) => !(entry.isSymlink && pointsInto(entry, [sharedRootCompare, claudeRootCompare])));
-  const codexToClaude = await linkEntriesIntoRoot(codexEntries, paths.claudeSkillsDir);
-  actions.push(...codexToClaude.actions);
-  warnings.push(...codexToClaude.warnings);
-  changed = changed || codexToClaude.changed;
+  const result = await reconcileGlobalSkillBridges({
+    ...(opts.homeDir !== undefined ? { homeDir: opts.homeDir } : {}),
+    ...(opts.bridgeConfigPath !== undefined ? { configPath: opts.bridgeConfigPath } : {}),
+    ...(opts.bridgeStatePath !== undefined ? { statePath: opts.bridgeStatePath } : {}),
+    targets: {
+      agents: paths.sharedSkillsDir,
+      claude: paths.claudeSkillsDir,
+      codex: paths.codexSkillsDir,
+    },
+  });
 
   return {
     ...paths,
-    changed,
-    actions,
-    warnings,
+    configPath: result.configPath,
+    statePath: result.statePath,
+    changed: result.changed,
+    actions: result.actions,
+    warnings: result.warnings,
   };
 }
 

@@ -1,19 +1,39 @@
 ---
 id: skills
 title: Skills (reusable agent capabilities)
-summary: Browse, install, publish, and update agent skills; installed skills appear as "/" slash commands and are shared across Claude Code and Codex.
+summary: Browse, install, publish, and update agent skills while keeping each agent's native skills isolated.
 ---
 Skills are reusable agent capabilities you package as a folder and load into your sessions. They're managed on the same page as Plugins — **Skills** and **Plugins** are two tabs of one management surface (the Skills tab is the in-app browser for finding, installing, publishing, and updating skills).
 
-**Skills work with both agents:**
+**Skills stay scoped to the right agent:**
 
-- Skills are **engine-shared** — the same installed skill is available to both Claude Code and Codex, so you install it once.
+- Each agent keeps its official and built-in skills in its own native directory, so agent updates can add or replace them without affecting another harness.
+- A small number of custom skills can be shared across agents explicitly. Cindy links each selected skill individually; it never imports another agent's entire skills directory.
 
 **Where skills live on disk:**
 
-- Global (available to every session): the shared root `~/.agents/skills/<name>/`, which is cross-linked to `~/.claude/skills/` and `~/.codex/skills/` so every engine sees the same skills. On Windows that's under `C:\Users\<you>\`.
+- Cindy-managed global custom skills live under `~/.agents/skills/<name>/`. Claude Code and Codex keep their native skills under `~/.claude/skills/` and `~/.codex/skills/` respectively. On Windows these directories are under `C:\Users\<you>\`.
+- Optional cross-agent bridges are declared in `~/.config/cindy/skill-bridges.json`. Only the named skill is linked to the named target; with no config, Cindy creates no cross-agent links and leaves user-owned links untouched.
 - Project-scoped (only inside one working directory): `<working-dir>/.agents/skills/<name>/` or `<working-dir>/.claude/skills/<name>/`.
 - Each skill is its own folder with a required `SKILL.md` at the root (the prompt / spec the agent reads). Sibling files and subfolders in that folder are also visible to the agent.
+
+**Sharing selected global skills:**
+
+```json
+{
+  "version": 1,
+  "bridges": [
+    {
+      "source": "agents",
+      "skill": "search-verify",
+      "targets": ["claude", "codex", "cindy"]
+    }
+  ]
+}
+```
+
+- `source` can be `agents`, `claude`, or `codex`; the source folder remains the single copy that owns the skill.
+- `targets` can contain `agents`, `claude`, `codex`, or `cindy`. Cindy-managed plugin skills are connected to Cindy automatically and do not need bridge entries.
 
 **Importing a local skill:**
 
@@ -24,7 +44,7 @@ Skills are reusable agent capabilities you package as a folder and load into you
 
 **Using an installed skill:**
 
-- Type `/` in the composer to open the slash-command palette; your installed skills show up there alongside built-in and agent commands. Pick one to run it.
+- Type `/` in the composer to open the slash-command palette; skills available to the current agent show up alongside built-in and agent commands. Pick one to run it.
 
 **Publishing your own skill:**
 

@@ -37,6 +37,15 @@ async function sameRealPath(a: string, b: string): Promise<boolean> {
   return normalize(ra) === normalize(rb);
 }
 
+async function writeBridgeConfig(
+  root: string,
+  bridges: Array<{ source: string; skill: string; targets: string[] }>,
+): Promise<string> {
+  const configPath = path.join(root, 'skill-bridges.json');
+  await fs.writeFile(configPath, JSON.stringify({ version: 1, bridges }), 'utf8');
+  return configPath;
+}
+
 afterEach(async () => {
   const dirs = tmpDirs;
   tmpDirs = [];
@@ -44,47 +53,94 @@ afterEach(async () => {
 });
 
 describe('prepareSharedGlobalSkillLinks', () => {
-  it('links existing Claude skills into the shared skills root for Codex visibility', async () => {
-    const root = await makeTmpDir();
-    const homeDir = path.join(root, 'home');
-    const paths = sharedGlobalSkillsPaths(homeDir);
-    const claudeSkill = await writeSkill(paths.claudeSkillsDir, 'claude-only');
-
-    const result = await prepareSharedGlobalSkillLinks({ homeDir });
-
-    expect(result.changed).toBe(true);
-    expect(result.warnings).toEqual([]);
-    expect(await sameRealPath(path.join(paths.sharedSkillsDir, 'claude-only'), claudeSkill)).toBe(true);
-  });
-
-  it('links shared skills into Claude skills so Claude Code can load them', async () => {
+  it('keeps native roots isolated by default and preserves an unmanaged manual bridge', async () => {
     const root = await makeTmpDir();
     const homeDir = path.join(root, 'home');
     const paths = sharedGlobalSkillsPaths(homeDir);
     const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'shared-only');
+    const claudeSkill = await writeSkill(paths.claudeSkillsDir, 'claude-only');
+    const manualBridge = path.join(paths.claudeSkillsDir, 'shared-only');
+    await fs.symlink(sharedSkill, manualBridge, process.platform === 'win32' ? 'junction' : 'dir');
 
     const result = await prepareSharedGlobalSkillLinks({ homeDir });
 
-    expect(result.changed).toBe(true);
+    expect(result.changed).toBe(false);
     expect(result.warnings).toEqual([]);
-    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'shared-only'), sharedSkill)).toBe(true);
+    expect(await sameRealPath(manualBridge, sharedSkill)).toBe(true);
+    await expect(fs.lstat(path.join(paths.sharedSkillsDir, 'claude-only'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'claude-only'), claudeSkill)).toBe(true);
   });
 
-  it('links existing Codex skills into Claude without creating a shared duplicate', async () => {
+  it('links only explicitly configured skills to the requested harnesses', async () => {
     const root = await makeTmpDir();
     const homeDir = path.join(root, 'home');
     const paths = sharedGlobalSkillsPaths(homeDir);
-    const codexSkill = await writeSkill(paths.codexSkillsDir, 'codex-only');
+    const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'shared-skill');
+    await writeSkill(paths.sharedSkillsDir, 'private-skill');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'shared-skill', targets: ['claude', 'codex'] },
+    ]);
 
-    await prepareSharedGlobalSkillLinks({ homeDir });
-    const secondResult = await prepareSharedGlobalSkillLinks({ homeDir });
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+
+    expect(result.changed).toBe(true);
+    expect(result.warnings).toEqual([]);
+    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'shared-skill'), sharedSkill)).toBe(true);
+    expect(await sameRealPath(path.join(paths.codexSkillsDir, 'shared-skill'), sharedSkill)).toBe(true);
+    await expect(fs.lstat(path.join(paths.claudeSkillsDir, 'private-skill'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await expect(fs.lstat(path.join(paths.codexSkillsDir, 'private-skill'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('is idempotent after the configured bridge exists', async () => {
+    const root = await makeTmpDir();
+    const homeDir = path.join(root, 'home');
+    const paths = sharedGlobalSkillsPaths(homeDir);
+    await writeSkill(paths.sharedSkillsDir, 'shared-skill');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'shared-skill', targets: ['claude'] },
+    ]);
+
+    await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+    const secondResult = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
 
     expect(secondResult.changed).toBe(false);
     expect(secondResult.warnings).toEqual([]);
-    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'codex-only'), codexSkill)).toBe(true);
-    await expect(fs.lstat(path.join(paths.sharedSkillsDir, 'codex-only'))).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(secondResult.actions.find((action) => action.name === 'shared-skill')?.status).toBe('kept');
+  });
+
+  it('does not adopt a matching user-owned link into Cindy-managed state', async () => {
+    const root = await makeTmpDir();
+    const homeDir = path.join(root, 'home');
+    const paths = sharedGlobalSkillsPaths(homeDir);
+    const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'manual-shared');
+    const manualBridge = path.join(paths.claudeSkillsDir, 'manual-shared');
+    await fs.mkdir(paths.claudeSkillsDir, { recursive: true });
+    await fs.symlink(
+      sharedSkill,
+      manualBridge,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'manual-shared', targets: ['claude'] },
+    ]);
+
+    const firstResult = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+    await fs.writeFile(
+      bridgeConfigPath,
+      JSON.stringify({ version: 1, bridges: [] }),
+      'utf8',
+    );
+    const secondResult = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+
+    expect(firstResult.changed).toBe(false);
+    expect(secondResult.changed).toBe(false);
+    expect(await sameRealPath(manualBridge, sharedSkill)).toBe(true);
   });
 
   it('does not overwrite conflicting real skill directories', async () => {
@@ -93,8 +149,11 @@ describe('prepareSharedGlobalSkillLinks', () => {
     const paths = sharedGlobalSkillsPaths(homeDir);
     const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'duplicate');
     const claudeSkill = await writeSkill(paths.claudeSkillsDir, 'duplicate');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'duplicate', targets: ['claude'] },
+    ]);
 
-    const result = await prepareSharedGlobalSkillLinks({ homeDir });
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
 
     expect(result.warnings.some((warning) => warning.includes('duplicate'))).toBe(true);
     expect(await sameRealPath(path.join(paths.sharedSkillsDir, 'duplicate'), sharedSkill)).toBe(true);
@@ -111,30 +170,77 @@ describe('prepareSharedGlobalSkillLinks', () => {
     const claudeLink = path.join(paths.claudeSkillsDir, 'user-link');
     await fs.mkdir(paths.claudeSkillsDir, { recursive: true });
     await fs.symlink(externalSkill, claudeLink, process.platform === 'win32' ? 'junction' : 'dir');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'user-link', targets: ['claude'] },
+    ]);
 
-    const result = await prepareSharedGlobalSkillLinks({ homeDir });
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
 
     expect(result.warnings.some((warning) => warning.includes('user-link'))).toBe(true);
     expect(await sameRealPath(claudeLink, externalSkill)).toBe(true);
     expect(await sameRealPath(claudeLink, sharedSkill)).toBe(false);
   });
 
-  it('cleans up broken managed links after the source skill is removed', async () => {
+  it('removes a configured bridge after its source skill disappears', async () => {
     const root = await makeTmpDir();
     const homeDir = path.join(root, 'home');
     const paths = sharedGlobalSkillsPaths(homeDir);
-    const claudeSkill = await writeSkill(paths.claudeSkillsDir, 'removed-later');
+    const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'removed-later');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'removed-later', targets: ['claude'] },
+    ]);
 
-    await prepareSharedGlobalSkillLinks({ homeDir });
-    expect(await sameRealPath(path.join(paths.sharedSkillsDir, 'removed-later'), claudeSkill)).toBe(true);
+    await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'removed-later'), sharedSkill)).toBe(true);
 
-    await fs.rm(claudeSkill, { recursive: true, force: true });
-    const result = await prepareSharedGlobalSkillLinks({ homeDir });
+    await fs.rm(sharedSkill, { recursive: true, force: true });
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
 
     expect(result.changed).toBe(true);
-    await expect(fs.lstat(path.join(paths.sharedSkillsDir, 'removed-later'))).rejects.toMatchObject({
+    expect(result.actions.some((action) => action.status === 'missing')).toBe(true);
+    await expect(fs.lstat(path.join(paths.claudeSkillsDir, 'removed-later'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it.each([
+    ['invalid JSON', '{'],
+    ['unsupported version', JSON.stringify({ version: 2, bridges: [] })],
+  ])('leaves existing bridges untouched when config has %s', async (_label, invalidConfig) => {
+    const root = await makeTmpDir();
+    const homeDir = path.join(root, 'home');
+    const paths = sharedGlobalSkillsPaths(homeDir);
+    const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'shared-skill');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'shared-skill', targets: ['claude'] },
+    ]);
+    await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+    await fs.writeFile(bridgeConfigPath, invalidConfig, 'utf8');
+
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+
+    expect(result.changed).toBe(false);
+    expect(result.warnings.some((warning) => warning.includes('invalid'))).toBe(true);
+    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'shared-skill'), sharedSkill)).toBe(true);
+  });
+
+  it('leaves existing bridges untouched when the config cannot be read', async () => {
+    const root = await makeTmpDir();
+    const homeDir = path.join(root, 'home');
+    const paths = sharedGlobalSkillsPaths(homeDir);
+    const sharedSkill = await writeSkill(paths.sharedSkillsDir, 'shared-skill');
+    const bridgeConfigPath = await writeBridgeConfig(root, [
+      { source: 'agents', skill: 'shared-skill', targets: ['claude'] },
+    ]);
+    await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+    await fs.rm(bridgeConfigPath);
+    await fs.mkdir(bridgeConfigPath);
+
+    const result = await prepareSharedGlobalSkillLinks({ homeDir, bridgeConfigPath });
+
+    expect(result.changed).toBe(false);
+    expect(result.warnings.some((warning) => warning.includes('cannot read'))).toBe(true);
+    expect(await sameRealPath(path.join(paths.claudeSkillsDir, 'shared-skill'), sharedSkill)).toBe(true);
   });
 });
 

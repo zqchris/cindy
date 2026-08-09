@@ -102,7 +102,7 @@ describe('skillSlot · checkSkillMdConsistency', () => {
 });
 
 describe('skillSlot · reconcileGhostSkillLinks', () => {
-  it('启用插件 → 建链进共享根并扇出 .claude;二次对账幂等', async () => {
+  it('启用插件 → 只建链进共享索引,不向 Claude 原生根扇出;二次对账幂等', async () => {
     await writeSkillDir('my-ghost', 'skills/foo', 'foo');
     const ghosts = [ghost('my-ghost', [{ dir: 'skills/foo', name: 'foo' }])];
 
@@ -113,15 +113,14 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
     const sharedLink = path.join(sharedDir(), linkName);
     const target = path.join(brainRoot, 'my-ghost', 'skills', 'foo');
     expect(sameRealPath(sharedLink, target)).toBe(true);
-    // .claude 兼容扇出(经 prepareSharedGlobalSkillLinks)
-    expect(sameRealPath(path.join(claudeDir(), linkName), target)).toBe(true);
+    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
 
     const second = await reconcileGhostSkillLinks({ ghosts, brainRoot, homeDir });
     expect(second.changed).toBe(false);
     expect(second.actions.filter((a) => a.op !== 'kept')).toEqual([]);
   });
 
-  it('停用/卸载 → 撤链,.claude 悬空兼容链接一并回收', async () => {
+  it('停用/卸载 → 撤掉共享索引且不在 Claude 原生根留下条目', async () => {
     await writeSkillDir('my-ghost', 'skills/foo', 'foo');
     const enabled = [ghost('my-ghost', [{ dir: 'skills/foo', name: 'foo' }])];
     await reconcileGhostSkillLinks({ ghosts: enabled, brainRoot, homeDir });
@@ -280,8 +279,8 @@ describe('skillSlot · reconcileGhostSkillLinks', () => {
   });
 });
 
-describe('skillSlot · 全链路(打包 → 装入 → 对账 → 双端可见)', () => {
-  it('forge 打包的 skill 插件装入后,对账把技能链进 .agents 与 .claude;卸载即撤', async () => {
+describe('skillSlot · 全链路(打包 → 装入 → 对账 → 隔离索引可见)', () => {
+  it('forge 打包的 skill 插件装入后只进入 .agents 托管索引;卸载即撤', async () => {
     // 1) 源码目录 → packGhostDir
     const srcDir = path.join(workDir, 'src');
     const write = async (rel: string, content: string) => {
@@ -314,18 +313,18 @@ describe('skillSlot · 全链路(打包 → 装入 → 对账 → 双端可见)'
     const installed = await manager.install(packed.cindyPath);
     expect('ghost' in installed, JSON.stringify(installed)).toBe(true);
 
-    // 3) 对账:共享根与 .claude 双端可见,realpath 落在安装目录
+    // 3) 对账:只进入共享托管索引,realpath 落在安装目录
     await reconcileGhostSkillLinks({ ghosts: manager.list(), brainRoot, homeDir });
     const linkName = ghostSkillLinkName('e2e-ghost', 'demo');
     const target = path.join(brainRoot, 'e2e-ghost', 'skills', 'demo');
     expect(sameRealPath(path.join(sharedDir(), linkName), target)).toBe(true);
-    expect(sameRealPath(path.join(claudeDir(), linkName), target)).toBe(true);
+    expect(fs.existsSync(path.join(claudeDir(), linkName))).toBe(false);
     // 链接指向的 SKILL.md 就是包里那份
     expect(
       await fs.promises.readFile(path.join(sharedDir(), linkName, 'SKILL.md'), 'utf8'),
     ).toContain('演示技能');
 
-    // 4) 卸载 → 对账 → 双端链接消失
+    // 4) 卸载 → 对账 → 托管索引链接消失
     const removed = await manager.uninstall('e2e-ghost');
     expect(removed).toMatchObject({ ok: true });
     await reconcileGhostSkillLinks({ ghosts: manager.list(), brainRoot, homeDir });

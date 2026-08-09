@@ -1204,7 +1204,7 @@ Node 工作进程或 stdio MCP,见 §4.12)、\`session-context\`(派活时主机
 可信 session_id / workdir / 只读状态注入 args,见 §4.13)、\`pick\`(请主机弹系统选文件夹窗口,
 用户亲选即授权,见 §4.14)、\`preview\`(请主机在右侧栏内置浏览器打开白名单网站的
 预览标签,见 §4.15)、\`skill\`(捆绑 Agent Skills:随包 SKILL.md 技能,启用后
-Claude Code 与 Codex 都能发现,见 §4.16)、\`workspace\`(请主机为项目目录在
+进入 Cindy 托管技能索引,见 §4.16)、\`workspace\`(请主机为项目目录在
 侧边栏创建/复用会话入口,见 §4.17)。
 
 **agent 能力详单**:在 \`slots\` 加 \`"agent"\`，默认只允许在用户真实点击你的
@@ -3204,9 +3204,11 @@ if (!opened.ok) console.warn(opened.errorCode, opened.message);
 
 想让插件"自带一份教 Agent 怎么用好自己的说明书"(或任何领域技能),把技能目录
 随包携带并声明 \`skill\` 槽 + \`skill.items\` 详单(见 §2)。装入且启用后,主机把
-每个技能目录链接进共享技能根 \`~/.agents/skills/<插件id>--<技能name>\`(Windows 用
-junction),Claude Code 与 Codex 都能自动发现——不复制字节,插件更新技能跟着更新,
-停用/卸载即撤链。
+每个技能目录链接进 Cindy 托管技能索引
+\`~/.agents/skills/<插件id>--<技能name>\`(Windows 用 junction),再逐项接入 Cindy
+自己的运行时——不复制字节,插件更新技能跟着更新,停用/卸载即撤链。它不会自动
+混入 Claude Code、Codex 或其它 harness 的原生 Skill 目录；用户若确实需要跨
+harness 使用,必须在 Cindy 的单 Skill bridge 配置里明确点名。
 
 目录形态(每条 item 一个目录,内必须有 SKILL.md):
 
@@ -3227,11 +3229,10 @@ SKILL.md 硬规则(打包与装入双侧强制,任一不满足直接拒):
 - \`name\`:小写字母/数字加单连字符分段(禁首尾/连续连字符),≤64 字符;
 - SKILL.md 单文件 ≤64KB;items 最多 4 条。
 
-正文开头建议写一段**环境守卫**(非强制,但强烈建议):技能挂进的是**共享**技能根,
-用户在 Cindy 之外直接跑 Claude Code / Codex 时同样会看到你的技能,而那里没有插件
-通道。Agent 读完正文自然会发现调不动 \`ghost_call\`,但很容易转头用 shell 自己实现
-一个"看起来像"的替代品——这段守卫拦的就是这个。放在 H1 标题之后的第一段
-(Agent 从头读正文):
+正文开头建议写一段**环境守卫**(非强制,但强烈建议):用户可以显式把这项 Skill
+bridge 给 Cindy 之外的 Claude Code / Codex,而那里没有插件通道。Agent 读完正文自然
+会发现调不动 \`ghost_call\`,但很容易转头用 shell 自己实现一个"看起来像"的替代品
+——这段守卫拦的就是这个。放在 H1 标题之后的第一段(Agent 从头读正文):
 
 \`\`\`markdown
 > **本技能属于 Cindy 插件 \`<插件 id>\`:动手前先看工具列表,没有名字含 \`ghost_call\`
