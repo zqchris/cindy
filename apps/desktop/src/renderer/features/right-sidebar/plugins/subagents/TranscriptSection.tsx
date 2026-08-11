@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { SubagentTranscriptEntry } from '@cindy/maker-shared/subagent-workspace';
+import type {
+  SubagentProvider,
+  SubagentTranscriptEntry,
+} from '@cindy/maker-shared/subagent-workspace';
 
 import { cn } from '@/lib/utils';
 
 interface TranscriptSectionProps {
   sessionId: string;
-  provider: string;
+  provider: SubagentProvider;
   runId: string;
   supported: boolean;
 }
@@ -22,15 +25,16 @@ export function TranscriptSection({ sessionId, provider, runId, supported }: Tra
     async (cursor?: string) => {
       setLoading(true);
       try {
-        // TODO: Add proper type to electronAPI once IPC is wired up
-        const response = await (window.electronAPI as any).localDb.subagentRuns.transcript({
+        const response = await window.electronAPI.localDb.subagentRuns.transcript({
           sessionId,
           provider,
           runIdOrAlias: runId,
           ...(cursor ? { cursor } : {}),
         });
         if (!response.supported) return;
-        setEntries((prev) => (cursor ? [...response.entries, ...prev] : response.entries));
+        // Resolvers page forward in time (offset 0 = oldest), so later pages
+        // append after what is already rendered to keep chronological order.
+        setEntries((prev) => (cursor ? [...prev, ...response.entries] : response.entries));
         setNextCursor(response.nextCursor ?? null);
       } finally {
         setLoading(false);
@@ -74,24 +78,24 @@ export function TranscriptSection({ sessionId, provider, runId, supported }: Tra
         {t('rightSidebar.subagents.transcript')}
       </h3>
 
+      <div className="space-y-2">
+        {entries.map((entry) => (
+          <TranscriptEntry key={entry.id} entry={entry} />
+        ))}
+      </div>
+
       {nextCursor ? (
         <button
           type="button"
           disabled={loading}
           onClick={() => void loadPage(nextCursor)}
-          className="mb-2 flex w-full items-center justify-center rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-11 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:cursor-wait disabled:opacity-60"
+          className="mt-2 flex w-full items-center justify-center rounded-lg border border-[var(--border-default)] px-3 py-1.5 text-11 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)] disabled:cursor-wait disabled:opacity-60"
         >
           {loading
             ? t('rightSidebar.subagents.transcriptLoading')
             : t('rightSidebar.subagents.transcriptLoadMore')}
         </button>
       ) : null}
-
-      <div className="space-y-2">
-        {entries.map((entry) => (
-          <TranscriptEntry key={entry.id} entry={entry} />
-        ))}
-      </div>
     </section>
   );
 }
@@ -109,7 +113,7 @@ function TranscriptEntry({ entry }: { entry: SubagentTranscriptEntry }) {
 
   if (entry.role === 'tool') {
     return (
-      <div className="overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-subtle)]">
+      <div className="overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-subtle)]">
         <div className="flex items-center gap-1.5 border-b border-[var(--border-default)] px-2.5 py-1">
           <span className="text-10 font-medium text-[var(--text-tertiary)]">
             {t('rightSidebar.subagents.transcriptRoles.tool')}

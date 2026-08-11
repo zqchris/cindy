@@ -5109,7 +5109,7 @@
       "cacheReadTokens": "Cache read",
       "cacheCreateTokens": "Cache write",
       "transcriptLoading": "Loading transcript…",
-      "transcriptLoadMore": "Load earlier",
+      "transcriptLoadMore": "Load more",
       "transcriptEmpty": "No content captured",
       "lastTool": "Last tool: {{tool}}",
       "tokens": "{{value}} tokens",

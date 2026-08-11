@@ -5106,7 +5106,7 @@
       "cacheReadTokens": "快取讀取",
       "cacheCreateTokens": "快取寫入",
       "transcriptLoading": "載入中…",
-      "transcriptLoadMore": "載入更早的",
+      "transcriptLoadMore": "載入更多",
       "transcriptEmpty": "未擷取內容",
       "lastTool": "最近工具：{{tool}}",
       "tokens": "{{value}} tokens",

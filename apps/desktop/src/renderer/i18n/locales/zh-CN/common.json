@@ -5103,7 +5103,7 @@
       "cacheReadTokens": "缓存读取",
       "cacheCreateTokens": "缓存写入",
       "transcriptLoading": "加载中…",
-      "transcriptLoadMore": "加载更早的",
+      "transcriptLoadMore": "加载更多",
       "transcriptEmpty": "未捕获内容",
       "lastTool": "最近工具：{{tool}}",
       "tokens": "{{value}} tokens",

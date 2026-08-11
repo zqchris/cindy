@@ -9,16 +9,6 @@ import type {
 
 import type { TranscriptResolveOptions } from './index.js';
 
-const TRANSCRIPTS_DIR = 'subagent-transcripts';
-
-export function getTranscriptsDir(): string {
-  return path.join(app.getPath('userData'), TRANSCRIPTS_DIR);
-}
-
-export function transcriptFilePath(runId: string): string {
-  return path.join(getTranscriptsDir(), `${runId}.json`);
-}
-
 export async function resolveFileTranscript(
   relativePath: string,
   options: TranscriptResolveOptions,

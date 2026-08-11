@@ -179,7 +179,8 @@ describe('durable Subagent runs', () => {
     expect(detail?.capabilities).toMatchObject({
       viewActivity: true,
       viewReturnedResult: true,
-      viewFullTranscript: false,
+      viewFullTranscript: true,
+      viewCost: true,
       resume: false,
       steer: false,
     });
@@ -721,6 +722,241 @@ describe('durable Subagent runs', () => {
     expect(first?.runs.map((run) => run.id)).toEqual([visible!.runId]);
     expect(first?.nextCursor).toBeUndefined();
   });
+
+  it('prices a run only once it reaches a terminal state', async () => {
+    const running = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'codex',
+      taskId: 'priced-run',
+      status: 'running',
+      model: 'gpt-5.5',
+      usage: { totalTokens: 5_000 },
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }));
+    // A run still in flight has no final number to show, so nothing is written.
+    expect(costRow(running!.runId)).toMatchObject({
+      cost_quality: null,
+      cost_amount: null,
+      cost_frozen_at: null,
+    });
+
+    await persistSubagentTaskUpdate(
+      'session-1',
+      observed(
+        {
+          provider: 'codex',
+          taskId: 'priced-run',
+          status: 'completed',
+          usage: { totalTokens: 20_000 },
+          updatedAt: '1970-01-01T00:00:02.000Z',
+        },
+        { kind: 'terminal' },
+      ),
+    );
+
+    // Terminal: the tokens are recorded and the snapshot is stamped. No rate
+    // card is reachable in this test environment, and an aggregate token count
+    // carries no input/output split, so no amount is claimed — usage is shown
+    // without asserting a price.
+    const row = costRow(running!.runId);
+    expect(row).toMatchObject({
+      cost_quality: 'unavailable',
+      cost_total_tokens: 20_000,
+      cost_amount: null,
+      cost_currency: null,
+    });
+    expect(row.cost_frozen_at).toBeGreaterThan(0);
+
+    // The snapshot is what the renderer reads back, model included.
+    const detail = await getSubagentRunDetail('session-1', 'codex', running!.runId);
+    expect(detail?.costSnapshot).toMatchObject({
+      quality: 'unavailable',
+      totalTokens: 20_000,
+      model: 'gpt-5.5',
+    });
+    expect(detail?.costSnapshot?.cost).toBeUndefined();
+  });
+
+  it('records a harness-reported charge as an actual cost', async () => {
+    const created = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'pi',
+      taskId: 'billed-run',
+      status: 'running',
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }), 'pi');
+
+    // PI's child process reports what the provider actually billed, so this run
+    // is priced from a real charge rather than a rate card.
+    await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'pi',
+      taskId: 'billed-run',
+      status: 'completed',
+      usage: {
+        totalTokens: 9_000,
+        inputTokens: 7_000,
+        outputTokens: 2_000,
+        costUsd: 0.0234,
+      },
+      updatedAt: '1970-01-01T00:00:02.000Z',
+    }, { kind: 'terminal' }), 'pi');
+
+    expect(costRow(created!.runId)).toMatchObject({
+      cost_quality: 'actual',
+      cost_amount: 0.0234,
+      cost_currency: 'USD',
+      cost_approximate: 0,
+      cost_input_tokens: 7_000,
+      cost_output_tokens: 2_000,
+    });
+
+    const detail = await getSubagentRunDetail('session-1', 'pi', created!.runId);
+    expect(detail?.costSnapshot).toMatchObject({
+      quality: 'actual',
+      cost: { amount: 0.0234, currency: 'USD', approximate: false },
+      breakdown: { inputTokens: 7_000, outputTokens: 2_000 },
+    });
+  });
+
+  it('freezes the priced snapshot against later terminal writes', async () => {
+    const created = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'claude-code',
+      taskId: 'frozen-run',
+      status: 'completed',
+      usage: { totalTokens: 10_000 },
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }));
+    const first = costRow(created!.runId);
+    expect(first.cost_frozen_at).toBeGreaterThan(0);
+
+    // A later terminal frame reporting far more usage must not re-price history:
+    // the number the user already saw stays put even as rates or totals move.
+    await persistSubagentTaskUpdate(
+      'session-1',
+      observed(
+        {
+          provider: 'claude-code',
+          taskId: 'frozen-run',
+          status: 'completed',
+          usage: { totalTokens: 999_000 },
+          updatedAt: '1970-01-01T00:00:05.000Z',
+        },
+        { kind: 'terminal' },
+      ),
+    );
+
+    expect(costRow(created!.runId)).toEqual(first);
+    // The live usage projection still tracks the newest report; only the
+    // frozen cost columns are held back.
+    expect(
+      (await getSubagentRunDetail('session-1', 'claude-code', created!.runId))?.usage,
+    ).toMatchObject({ totalTokens: 999_000 });
+  });
+
+  it('records an unavailable snapshot rather than a fabricated price without usage', async () => {
+    const created = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'pi',
+      taskId: 'unpriceable-run',
+      status: 'failed',
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }));
+
+    expect(costRow(created!.runId)).toMatchObject({
+      cost_quality: 'unavailable',
+      cost_amount: null,
+      cost_currency: null,
+    });
+    // `unavailable` is a recorded fact, but the detail view has nothing to show.
+    expect(
+      (await getSubagentRunDetail('session-1', 'pi', created!.runId))?.costSnapshot,
+    ).toMatchObject({ quality: 'unavailable' });
+  });
+
+  it('grants the cost and transcript capabilities to newly written runs', async () => {
+    const created = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'pi',
+      taskId: 'capability-run',
+      status: 'running',
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }));
+
+    expect(
+      (await getSubagentRunDetail('session-1', 'pi', created!.runId))?.capabilities,
+    ).toEqual({
+      viewActivity: true,
+      viewReturnedResult: true,
+      viewFullTranscript: true,
+      viewCost: true,
+      resume: false,
+      steer: false,
+      stop: false,
+      parentContext: 'unknown',
+    });
+  });
+
+  it('upgrades a row written with narrower capabilities without downgrading a wider one', async () => {
+    const legacy = await persistSubagentTaskUpdate('session-1', observed({
+      provider: 'pi',
+      taskId: 'legacy-capability-run',
+      status: 'running',
+      updatedAt: '1970-01-01T00:00:01.000Z',
+    }));
+    // Simulate a row persisted by the previous build, plus one that already
+    // advertises a capability this build does not grant.
+    rawDb
+      .prepare('UPDATE subagent_runs SET capabilities = ? WHERE id = ?')
+      .run(
+        JSON.stringify({
+          viewActivity: true,
+          viewReturnedResult: true,
+          viewFullTranscript: false,
+          viewCost: false,
+          resume: false,
+          steer: true,
+          stop: false,
+          parentContext: 'snapshot',
+        }),
+        legacy!.runId,
+      );
+
+    await persistSubagentTaskUpdate(
+      'session-1',
+      observed(
+        {
+          provider: 'pi',
+          taskId: 'legacy-capability-run',
+          status: 'completed',
+          usage: { totalTokens: 1_000 },
+          updatedAt: '1970-01-01T00:00:02.000Z',
+        },
+        { kind: 'terminal' },
+      ),
+    );
+
+    expect(
+      (await getSubagentRunDetail('session-1', 'pi', legacy!.runId))?.capabilities,
+    ).toEqual({
+      viewActivity: true,
+      viewReturnedResult: true,
+      // Upgraded by this build.
+      viewFullTranscript: true,
+      viewCost: true,
+      resume: false,
+      // Already granted on the row; this writer must not take it away.
+      steer: true,
+      stop: false,
+      parentContext: 'snapshot',
+    });
+  });
+
+  function costRow(runId: string): Record<string, number | string | null> {
+    return rawDb
+      .prepare(
+        `SELECT cost_quality, cost_total_tokens, cost_input_tokens, cost_output_tokens,
+                cost_cache_read_tokens, cost_cache_create_tokens, cost_amount,
+                cost_currency, cost_approximate, cost_frozen_at
+         FROM subagent_runs WHERE id = ?`,
+      )
+      .get(runId) as Record<string, number | string | null>;
+  }
 
   function insertMessage(
     id: string,

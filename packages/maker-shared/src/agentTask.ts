@@ -21,6 +21,33 @@ export interface AgentTaskUsage {
   totalTokens?: number;
   toolUses?: number;
   durationMs?: number;
+  /**
+   * Per-category token counts, when the harness separates them.
+   *
+   * Pricing needs this split: input and output differ by roughly 5x, so an
+   * aggregate `totalTokens` cannot be priced without inventing a ratio.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreateTokens?: number;
+  /**
+   * Amount the provider billed for this child, when the harness reports one.
+   * Distinct from a rate-card estimate — only set this from a real charge.
+   */
+  costUsd?: number;
+}
+
+/**
+ * One captured child-session line. Harness adapters emit these on the terminal
+ * frame; the host owns sequencing, bounds and persistence, so adapters only
+ * need to report what the child actually said or did.
+ */
+export interface SubagentTranscriptEntryInput {
+  role: 'parent' | 'subagent' | 'tool' | 'system';
+  content: string;
+  occurredAt: number;
+  toolName?: string;
 }
 
 /**
@@ -150,6 +177,12 @@ export interface AgentTaskUpdate {
   displayName?: string;
   /** Harness-native technical name (for routing/diagnostics). */
   nativeName?: string;
+  /**
+   * Child session content captured during the run, attached on the terminal
+   * frame. The host persists it to a Cindy-owned file; it never crosses the
+   * renderer boundary on the live event path.
+   */
+  transcriptEntries?: SubagentTranscriptEntryInput[];
   receiverThreadIds?: string[];
   /**
    * workflow 逐 agent 进度树(taskType=local_workflow 时由 task_progress 事件携带)。
@@ -200,6 +233,45 @@ export const PI_SUBAGENT_TOOL_NAME = 'subagent';
  * Validate + shape a raw `agent_task_update` event payload into an `AgentTaskUpdate`.
  * Returns null when neither a taskId nor a parentToolUseId is present (un-linkable).
  */
+const TRANSCRIPT_MAX_ENTRIES = 500;
+const TRANSCRIPT_MAX_CONTENT = 64 * 1024;
+const TRANSCRIPT_ROLES = new Set(['parent', 'subagent', 'tool', 'system']);
+
+/**
+ * Bounds the adapter-supplied transcript before it reaches the host. Entry count
+ * and per-entry length are capped here rather than at each adapter so one chatty
+ * child cannot grow an unbounded durable record.
+ */
+export function normalizeSubagentTranscriptEntries(
+  raw: unknown,
+): SubagentTranscriptEntryInput[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const out: SubagentTranscriptEntryInput[] = [];
+  for (const item of raw) {
+    if (out.length >= TRANSCRIPT_MAX_ENTRIES) break;
+    if (!item || typeof item !== 'object') continue;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.role !== 'string' || !TRANSCRIPT_ROLES.has(entry.role)) continue;
+    if (typeof entry.content !== 'string' || !entry.content) continue;
+    const occurredAt = typeof entry.occurredAt === 'number' && Number.isFinite(entry.occurredAt)
+      ? entry.occurredAt
+      : undefined;
+    if (occurredAt === undefined) continue;
+    const content = entry.content.length > TRANSCRIPT_MAX_CONTENT
+      ? `${entry.content.slice(0, TRANSCRIPT_MAX_CONTENT - 1)}…`
+      : entry.content;
+    out.push({
+      role: entry.role as SubagentTranscriptEntryInput['role'],
+      content,
+      occurredAt,
+      ...(typeof entry.toolName === 'string' && entry.toolName
+        ? { toolName: entry.toolName.slice(0, 240) }
+        : {}),
+    });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 export function normalizeAgentTaskUpdate(
   data: unknown,
   source?: 'claude-code' | 'codex' | 'pi',
@@ -228,9 +300,21 @@ export function normalizeAgentTaskUpdate(
         ...(typeof usageRaw.totalTokens === 'number' ? { totalTokens: usageRaw.totalTokens } : {}),
         ...(typeof usageRaw.toolUses === 'number' ? { toolUses: usageRaw.toolUses } : {}),
         ...(typeof usageRaw.durationMs === 'number' ? { durationMs: usageRaw.durationMs } : {}),
+        ...(typeof usageRaw.inputTokens === 'number' ? { inputTokens: usageRaw.inputTokens } : {}),
+        ...(typeof usageRaw.outputTokens === 'number' ? { outputTokens: usageRaw.outputTokens } : {}),
+        ...(typeof usageRaw.cacheReadTokens === 'number'
+          ? { cacheReadTokens: usageRaw.cacheReadTokens }
+          : {}),
+        ...(typeof usageRaw.cacheCreateTokens === 'number'
+          ? { cacheCreateTokens: usageRaw.cacheCreateTokens }
+          : {}),
+        ...(typeof usageRaw.costUsd === 'number' && Number.isFinite(usageRaw.costUsd)
+          ? { costUsd: usageRaw.costUsd }
+          : {}),
       }
     : undefined;
   const workflowProgress = normalizeWorkflowProgressEntries(raw.workflowProgress);
+  const transcriptEntries = normalizeSubagentTranscriptEntries(raw.transcriptEntries);
   return {
     provider,
     taskId: taskId ?? parentToolUseId!,
@@ -253,6 +337,7 @@ export function normalizeAgentTaskUpdate(
     ...(typeof raw.role === 'string' && raw.role ? { role: raw.role } : {}),
     ...(typeof raw.displayName === 'string' && raw.displayName ? { displayName: raw.displayName } : {}),
     ...(typeof raw.nativeName === 'string' && raw.nativeName ? { nativeName: raw.nativeName } : {}),
+    ...(transcriptEntries ? { transcriptEntries } : {}),
     ...(Array.isArray(raw.receiverThreadIds)
       ? { receiverThreadIds: raw.receiverThreadIds.filter((id): id is string => typeof id === 'string') }
       : {}),
@@ -282,6 +367,7 @@ export function mergeAgentTaskUpdate(prev: AgentTaskUpdate | undefined, next: Ag
     role: next.role ?? prev.role,
     displayName: next.displayName ?? prev.displayName,
     nativeName: next.nativeName ?? prev.nativeName,
+    transcriptEntries: next.transcriptEntries ?? prev.transcriptEntries,
     updatedAt: next.updatedAt ?? prev.updatedAt,
   };
 }

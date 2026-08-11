@@ -2,7 +2,7 @@
 
 import { createId } from '@paralleldrive/cuid2';
 import {
-  SUBAGENT_PR1_CAPABILITIES,
+  SUBAGENT_PR2_CAPABILITIES,
   type SubagentActivityEntry,
   type SubagentCapabilities,
   type SubagentCostSnapshot,
@@ -23,6 +23,13 @@ import { and, desc, eq, gt, inArray, isNull, lt, ne, or } from 'drizzle-orm';
 
 import { getDbClient } from './client/current.js';
 import { messages, sessions, subagentRunAliases, subagentRuns } from './schema.js';
+import {
+  getGatewayModelPricingForModel,
+  getModelPriceQuote,
+} from '../usage/modelPricing.js';
+import type { ModelPriceQuote } from '../../shared/regionalMoney.js';
+import { computeSubagentCostSnapshot } from './subagentCostSnapshot.js';
+import { writeSubagentTranscript } from './subagentTranscriptStore.js';
 
 const MAX_ALIAS_COUNT = 128;
 const MAX_PROVIDER_RUN_IDS = 64;
@@ -167,6 +174,142 @@ function mergeUnique(
 
 function terminal(status: SubagentRunStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'stopped';
+}
+
+type CostColumns = Pick<
+  SubagentRunRow,
+  | 'costQuality'
+  | 'costTotalTokens'
+  | 'costInputTokens'
+  | 'costOutputTokens'
+  | 'costCacheReadTokens'
+  | 'costCacheCreateTokens'
+  | 'costAmount'
+  | 'costCurrency'
+  | 'costApproximate'
+  | 'costFrozenAt'
+>;
+
+function frozenCostColumns(existing: SubagentRunRow | undefined): CostColumns {
+  return {
+    costQuality: existing?.costQuality ?? null,
+    costTotalTokens: existing?.costTotalTokens ?? null,
+    costInputTokens: existing?.costInputTokens ?? null,
+    costOutputTokens: existing?.costOutputTokens ?? null,
+    costCacheReadTokens: existing?.costCacheReadTokens ?? null,
+    costCacheCreateTokens: existing?.costCacheCreateTokens ?? null,
+    costAmount: existing?.costAmount ?? null,
+    costCurrency: existing?.costCurrency ?? null,
+    costApproximate: existing?.costApproximate ?? null,
+    costFrozenAt: existing?.costFrozenAt ?? null,
+  };
+}
+
+const PRICING_PROVIDER_BY_HARNESS: Record<SubagentProvider, string> = {
+  'claude-code': 'anthropic',
+  codex: 'openai',
+  pi: 'anthropic',
+};
+
+/**
+ * Prices a run once, on the frame that first closes it.
+ *
+ * A snapshot is history, not a live query. Rate cards change, so a record that
+ * silently re-priced on every later write would show a different number than
+ * the one the user saw when the run finished; a row that already carries
+ * `costFrozenAt` keeps its stored columns verbatim, and non-terminal frames
+ * carry them forward rather than pricing an unfinished run.
+ *
+ * Rates come from the same catalog the rest of the app bills against, looked up
+ * by the model the child actually reported. When that lookup fails, or when the
+ * harness only reported an aggregate token count, the snapshot records the
+ * tokens and leaves the amount empty — see `subagentCostSnapshot.ts` for why an
+ * assumed input/output split is not treated as an estimate.
+ */
+async function resolveCostColumns(
+  existing: SubagentRunRow | undefined,
+  update: AgentTaskUpdate,
+  status: SubagentRunStatus,
+): Promise<CostColumns> {
+  if (!terminal(status) || existing?.costFrozenAt) return frozenCostColumns(existing);
+  const model =
+    (update.model === null ? undefined : boundedText(update.model, TEXT_LIMITS.model)) ??
+    existing?.model ??
+    undefined;
+  const totalTokens =
+    boundedNumber(update.usage?.totalTokens) ?? existing?.totalTokens ?? undefined;
+
+  let priceQuote: ModelPriceQuote | undefined;
+  if (model) {
+    try {
+      const catalog = await getGatewayModelPricingForModel();
+      priceQuote = getModelPriceQuote(
+        catalog,
+        PRICING_PROVIDER_BY_HARNESS[update.provider],
+        model,
+      );
+    } catch {
+      // Pricing is an enrichment; a catalog outage must not block the record.
+    }
+  }
+
+  const usage = update.usage;
+  // Money is fractional — `boundedNumber` floors, which would zero out any
+  // sub-dollar charge.
+  const reportedCostUsd =
+    typeof usage?.costUsd === 'number' && Number.isFinite(usage.costUsd) && usage.costUsd >= 0
+      ? usage.costUsd
+      : undefined;
+  return computeSubagentCostSnapshot({
+    provider: update.provider,
+    ...(priceQuote ? { priceQuote } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...(boundedNumber(usage?.inputTokens) !== undefined
+      ? { inputTokens: boundedNumber(usage?.inputTokens) }
+      : {}),
+    ...(boundedNumber(usage?.outputTokens) !== undefined
+      ? { outputTokens: boundedNumber(usage?.outputTokens) }
+      : {}),
+    ...(boundedNumber(usage?.cacheReadTokens) !== undefined
+      ? { cacheReadTokens: boundedNumber(usage?.cacheReadTokens) }
+      : {}),
+    ...(boundedNumber(usage?.cacheCreateTokens) !== undefined
+      ? { cacheCreateTokens: boundedNumber(usage?.cacheCreateTokens) }
+      : {}),
+    ...(reportedCostUsd !== undefined
+      ? { reportedCost: { amount: reportedCostUsd, currency: 'USD' as const } }
+      : {}),
+  });
+}
+
+/**
+ * Capability grants are additive.
+ *
+ * Rows written by an earlier build carry a narrower set; leaving them alone
+ * would strand every pre-existing run without the cost and transcript views.
+ * The stored set is OR-ed with the current baseline instead of overwritten so a
+ * row that already advertises more (a newer build, then a rollback) is never
+ * downgraded by this writer.
+ */
+function upgradedCapabilities(existing: string | undefined): string {
+  if (existing === undefined) return JSON.stringify(SUBAGENT_PR2_CAPABILITIES);
+  const stored = parseCapabilities(existing);
+  const merged: SubagentCapabilities = {
+    viewActivity: stored.viewActivity || SUBAGENT_PR2_CAPABILITIES.viewActivity,
+    viewReturnedResult:
+      stored.viewReturnedResult || SUBAGENT_PR2_CAPABILITIES.viewReturnedResult,
+    viewFullTranscript:
+      stored.viewFullTranscript || SUBAGENT_PR2_CAPABILITIES.viewFullTranscript,
+    viewCost: stored.viewCost || SUBAGENT_PR2_CAPABILITIES.viewCost,
+    resume: stored.resume || SUBAGENT_PR2_CAPABILITIES.resume,
+    steer: stored.steer || SUBAGENT_PR2_CAPABILITIES.steer,
+    stop: stored.stop || SUBAGENT_PR2_CAPABILITIES.stop,
+    parentContext:
+      stored.parentContext !== 'unknown'
+        ? stored.parentContext
+        : SUBAGENT_PR2_CAPABILITIES.parentContext,
+  };
+  return JSON.stringify(merged);
 }
 
 function mergeStatus(
@@ -503,7 +646,11 @@ export async function persistSubagentTaskUpdate(
     displayName: boundedText(update.displayName, TEXT_LIMITS.title) ?? existing?.displayName ?? null,
     role: boundedText(update.role, TEXT_LIMITS.reasoningEffort) ?? existing?.role ?? null,
     nativeName: boundedText(update.nativeName, TEXT_LIMITS.title) ?? existing?.nativeName ?? null,
-    capabilities: existing?.capabilities ?? JSON.stringify(SUBAGENT_PR1_CAPABILITIES),
+    // Rows written by an earlier build are upgraded in place; otherwise a run
+    // started one release ago would stay permanently unable to show cost or
+    // content even though both are now recorded for it.
+    capabilities: upgradedCapabilities(existing?.capabilities),
+    ...(await resolveCostColumns(existing, update, status)),
     activity: JSON.stringify(activity),
     startedAt,
     updatedAt: Math.max(existing?.updatedAt ?? 0, updatedAt),
@@ -518,7 +665,15 @@ export async function persistSubagentTaskUpdate(
       mergeUnique(aliases, providerRunIds, MAX_INDEXED_ALIAS_COUNT),
       now,
     );
-    await db.update(subagentRuns).set(values).where(eq(subagentRuns.id, existing.id));
+    const transcriptFile = await persistTranscriptIfPresent(
+      existing.id,
+      update,
+      existing.transcriptFile,
+    );
+    await db
+      .update(subagentRuns)
+      .set(transcriptFile ? { ...values, transcriptFile } : values)
+      .where(eq(subagentRuns.id, existing.id));
     return { runId: existing.id, created: false, firstForSession: false };
   }
 
@@ -535,12 +690,14 @@ export async function persistSubagentTaskUpdate(
     )
     .limit(1);
   const id = createId();
+  const transcriptFile = await persistTranscriptIfPresent(id, update, null);
   await db.insert(subagentRuns).values({
     id,
     sessionId,
     provider: update.provider,
     logicalAgentId: observation.logicalSubagentId,
     ...values,
+    ...(transcriptFile ? { transcriptFile } : {}),
   });
   await persistAliasProjection(
     { id, sessionId, provider: update.provider },
@@ -548,6 +705,25 @@ export async function persistSubagentTaskUpdate(
     now,
   );
   return { runId: id, created: true, firstForSession: !visibleBefore };
+}
+
+/**
+ * Writes captured child-session content on the frame that carries it.
+ *
+ * Adapters only attach entries on the terminal frame, so this runs at most once
+ * per run. An existing file is kept when the new frame carries nothing, and a
+ * failed write leaves the row's pointer untouched rather than advertising a file
+ * that cannot be read back.
+ */
+async function persistTranscriptIfPresent(
+  runId: string,
+  update: AgentTaskUpdate,
+  existingFile: string | null,
+): Promise<string | null> {
+  const entries = update.transcriptEntries;
+  if (!entries || entries.length === 0) return null;
+  if (existingFile) return null;
+  return writeSubagentTranscript(runId, entries);
 }
 
 async function readableSession(sessionId: string): Promise<{ clearedAt: number | null } | null> {

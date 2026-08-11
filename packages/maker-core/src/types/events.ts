@@ -9,7 +9,10 @@
  * 与现有 ccAgent.types StreamEvent 接近，但精简了未启用字段。
  */
 
-import type { WorkflowProgressEntry } from '@cindy/maker-shared/agent-task';
+import type {
+  SubagentTranscriptEntryInput,
+  WorkflowProgressEntry,
+} from '@cindy/maker-shared/agent-task';
 import type { SubagentObservation } from '@cindy/maker-shared/subagent-observation';
 import type { PiRuntimeCapabilityManifest } from './pi-runtime-capabilities.js';
 
@@ -68,6 +71,17 @@ export interface AgentTaskUsage {
   totalTokens?: number;
   toolUses?: number;
   durationMs?: number;
+  /**
+   * Per-category token counts, when the harness separates them. Pricing needs
+   * this split: input and output differ by roughly 5x, so an aggregate count
+   * cannot be priced without inventing a ratio.
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheCreateTokens?: number;
+  /** Provider-billed amount for this child, when the harness reports one. */
+  costUsd?: number;
 }
 
 export interface AgentTaskUpdateEventData {
@@ -103,6 +117,18 @@ export interface AgentTaskUpdateEventData {
    * CLI 对纯心跳帧节流省略本字段(undefined = 沿用上一帧),下游 merge 不得清空。
    */
   workflowProgress?: WorkflowProgressEntry[];
+  /** Functional role for the sidebar list ("developer", "scout", …). */
+  role?: string;
+  /** User-specified name; takes display priority over role. */
+  displayName?: string;
+  /** Harness-native technical name, for routing and diagnostics. */
+  nativeName?: string;
+  /**
+   * Child-session content captured during the run, attached on the terminal
+   * frame only. The host persists it; it does not cross the renderer boundary
+   * on the live event path.
+   */
+  transcriptEntries?: SubagentTranscriptEntryInput[];
   raw?: unknown;
 }
 

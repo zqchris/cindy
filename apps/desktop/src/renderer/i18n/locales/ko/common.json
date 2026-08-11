@@ -5107,7 +5107,7 @@
       "cacheReadTokens": "캐시 읽기",
       "cacheCreateTokens": "캐시 쓰기",
       "transcriptLoading": "불러오는 중…",
-      "transcriptLoadMore": "이전 불러오기",
+      "transcriptLoadMore": "더 불러오기",
       "transcriptEmpty": "캡처된 내용 없음",
       "lastTool": "최근 도구: {{tool}}",
       "tokens": "{{value}} tokens",

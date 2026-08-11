@@ -16,6 +16,7 @@
  * 的 UI 概念。
  */
 
+import { normalizeSubagentTranscriptEntries } from '@cindy/maker-shared/agent-task';
 import type { AgentTaskUpdateEventData } from '../../types/events.js';
 
 /** 子代理卡状态(`AgentTaskStatus` 的子集)。 */
@@ -114,20 +115,36 @@ export function parsePiSubagentProgress(partialResult: unknown): PiSubagentProgr
   const totalTokens = readCount(raw.totalTokens);
   const toolUses = readCount(raw.toolUses);
   const durationMs = readCount(raw.durationMs);
-  const usage = totalTokens !== undefined || toolUses !== undefined || durationMs !== undefined
-    ? {
-        ...(totalTokens !== undefined ? { totalTokens } : {}),
-        ...(toolUses !== undefined ? { toolUses } : {}),
-        ...(durationMs !== undefined ? { durationMs } : {}),
-      }
-    : undefined;
+  const delegatedUsage = readUsage(raw.usage);
+  // pi 子进程直接回报分项 token 与供应商实收金额。把它们放进卡片 usage,子代理的
+  // 费用才能按"实际"而不是牌价估算落库 —— 这是三套 Harness 里唯一有账单事实的一条。
+  const usage =
+    totalTokens !== undefined ||
+    toolUses !== undefined ||
+    durationMs !== undefined ||
+    delegatedUsage
+      ? {
+          ...(totalTokens !== undefined ? { totalTokens } : {}),
+          ...(toolUses !== undefined ? { toolUses } : {}),
+          ...(durationMs !== undefined ? { durationMs } : {}),
+          ...(delegatedUsage
+            ? {
+                inputTokens: delegatedUsage.input,
+                outputTokens: delegatedUsage.output,
+                cacheReadTokens: delegatedUsage.cacheRead,
+                cacheCreateTokens: delegatedUsage.cacheWrite,
+                ...(delegatedUsage.cost > 0 ? { costUsd: delegatedUsage.cost } : {}),
+              }
+            : {}),
+        }
+      : undefined;
 
   const title = readString(raw.agentName, 96);
   const description = readString(raw.task);
   const summary = readString(raw.summary);
   const model = readString(raw.model, 200);
-
-  const delegatedUsage = readUsage(raw.usage);
+  // 子进程只在终态帧带上完整工作过程;host 侧再做一次收窄与落盘。
+  const transcriptEntries = normalizeSubagentTranscriptEntries(raw.transcript);
 
   return {
     update: {
@@ -145,6 +162,7 @@ export function parsePiSubagentProgress(partialResult: unknown): PiSubagentProgr
       ...(summary ? { summary } : {}),
       ...(model ? { model } : {}),
       ...(usage ? { usage } : {}),
+      ...(transcriptEntries ? { transcriptEntries } : {}),
     },
     ...(delegatedUsage ? { delegatedUsage } : {}),
   };

@@ -1,20 +1,33 @@
 /**
- * Computes a cost snapshot for a subagent run at termination time.
+ * Prices one Subagent run for the sidebar, once, when the run finishes.
  *
- * The result maps directly to the `cost_*` columns in the subagentRuns table.
- * This is a pure function with no side effects and no external imports beyond types.
+ * The guiding rule is that a number shown next to a task must be defensible.
+ * Three quality levels exist for exactly that reason:
+ *
+ *  - `actual`      the provider billed this amount for this child
+ *  - `estimated`   real per-token rates for the model the child actually ran,
+ *                  applied to observed token counts
+ *  - `unavailable` anything less
+ *
+ * Notably, a plain `totalTokens` figure with no input/output split does **not**
+ * qualify as an estimate: input and output differ by roughly 5x in price, so
+ * splitting an aggregate by an assumed ratio produces a precise-looking number
+ * whose error is unbounded. Showing nothing is more honest than showing that.
  */
+
+import type { ModelPriceQuote } from '../../shared/regionalMoney.js';
 
 export interface SubagentCostSnapshotInput {
   provider: 'claude-code' | 'codex' | 'pi';
-  model?: string;
+  /** Per-token rates for the model this child actually ran, when resolvable. */
+  priceQuote?: ModelPriceQuote;
   totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
   cacheCreateTokens?: number;
-  /** PI reports actual cost in USD */
-  reportedCostUsd?: number;
+  /** Provider-billed amount, when the harness reports one for this child. */
+  reportedCost?: { amount: number; currency: 'CNY' | 'USD' };
 }
 
 export interface SubagentCostSnapshotColumns {
@@ -30,128 +43,84 @@ export interface SubagentCostSnapshotColumns {
   costFrozenAt: number;
 }
 
-// Reference rates per million tokens (USD)
-const RATE_INPUT_PER_MILLION = 3;
-const RATE_OUTPUT_PER_MILLION = 15;
-const RATE_CACHE_READ_PER_MILLION = 0.30;
-const RATE_CACHE_CREATE_PER_MILLION = 3.75;
-
-/** Round to 6 decimal places to avoid floating point noise. */
+/** Sub-cent amounts still matter when a task fans out to many children. */
 function roundCost(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-function tokensToUsd(
-  inputTokens: number,
-  outputTokens: number,
-  cacheReadTokens: number,
-  cacheCreateTokens: number,
-): number {
-  const cost =
-    (inputTokens / 1_000_000) * RATE_INPUT_PER_MILLION +
-    (outputTokens / 1_000_000) * RATE_OUTPUT_PER_MILLION +
-    (cacheReadTokens / 1_000_000) * RATE_CACHE_READ_PER_MILLION +
-    (cacheCreateTokens / 1_000_000) * RATE_CACHE_CREATE_PER_MILLION;
-  return roundCost(cost);
-}
-
-function safeNonNegativeInt(value: number | undefined): number | null {
+function nonNegativeInt(value: number | undefined): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
   return Math.floor(value);
+}
+
+function tokenColumns(
+  input: SubagentCostSnapshotInput,
+): Pick<
+  SubagentCostSnapshotColumns,
+  | 'costTotalTokens'
+  | 'costInputTokens'
+  | 'costOutputTokens'
+  | 'costCacheReadTokens'
+  | 'costCacheCreateTokens'
+> {
+  return {
+    costTotalTokens: nonNegativeInt(input.totalTokens),
+    costInputTokens: nonNegativeInt(input.inputTokens),
+    costOutputTokens: nonNegativeInt(input.outputTokens),
+    costCacheReadTokens: nonNegativeInt(input.cacheReadTokens),
+    costCacheCreateTokens: nonNegativeInt(input.cacheCreateTokens),
+  };
 }
 
 export function computeSubagentCostSnapshot(
   input: SubagentCostSnapshotInput,
 ): SubagentCostSnapshotColumns {
   const costFrozenAt = Date.now();
+  const tokens = tokenColumns(input);
 
-  // Case 1: PI with reported actual cost
-  if (
-    input.provider === 'pi' &&
-    typeof input.reportedCostUsd === 'number' &&
-    Number.isFinite(input.reportedCostUsd)
-  ) {
-    const totalTokens = safeNonNegativeInt(input.totalTokens);
-    const inputTokens = safeNonNegativeInt(input.inputTokens);
-    const outputTokens = safeNonNegativeInt(input.outputTokens);
-    const cacheReadTokens = safeNonNegativeInt(input.cacheReadTokens);
-    const cacheCreateTokens = safeNonNegativeInt(input.cacheCreateTokens);
+  const reported = input.reportedCost;
+  if (reported && Number.isFinite(reported.amount) && reported.amount >= 0) {
     return {
       costQuality: 'actual',
-      costTotalTokens: totalTokens,
-      costInputTokens: inputTokens,
-      costOutputTokens: outputTokens,
-      costCacheReadTokens: cacheReadTokens,
-      costCacheCreateTokens: cacheCreateTokens,
-      costAmount: roundCost(input.reportedCostUsd),
-      costCurrency: 'USD',
+      ...tokens,
+      costAmount: roundCost(reported.amount),
+      costCurrency: reported.currency,
       costApproximate: false,
       costFrozenAt,
     };
   }
 
-  // Case 2: Claude Code with extended token breakdown
-  if (
-    typeof input.inputTokens === 'number' &&
-    Number.isFinite(input.inputTokens) &&
-    input.inputTokens >= 0 &&
-    typeof input.outputTokens === 'number' &&
-    Number.isFinite(input.outputTokens) &&
-    input.outputTokens >= 0
-  ) {
-    const inputTokens = Math.floor(input.inputTokens);
-    const outputTokens = Math.floor(input.outputTokens);
-    const cacheReadTokens = safeNonNegativeInt(input.cacheReadTokens) ?? 0;
-    const cacheCreateTokens = safeNonNegativeInt(input.cacheCreateTokens) ?? 0;
-    const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreateTokens;
-    const costAmount = tokensToUsd(inputTokens, outputTokens, cacheReadTokens, cacheCreateTokens);
+  // An estimate needs both a rate card for the model that ran and a split of
+  // input vs output tokens. Missing either one degrades to unavailable rather
+  // than to a guess.
+  const quote = input.priceQuote;
+  const inputTokens = tokens.costInputTokens;
+  const outputTokens = tokens.costOutputTokens;
+  if (quote && inputTokens !== null && outputTokens !== null) {
+    const cacheRead = tokens.costCacheReadTokens ?? 0;
+    const cacheCreate = tokens.costCacheCreateTokens ?? 0;
+    const amount =
+      (inputTokens / 1_000_000) * quote.inputPerMtok +
+      (outputTokens / 1_000_000) * quote.outputPerMtok +
+      (cacheRead / 1_000_000) * (quote.cacheReadPerMtok ?? 0) +
+      (cacheCreate / 1_000_000) * (quote.cacheCreatePerMtok ?? 0);
     return {
       costQuality: 'estimated',
-      costTotalTokens: totalTokens,
-      costInputTokens: inputTokens,
-      costOutputTokens: outputTokens,
-      costCacheReadTokens: cacheReadTokens > 0 ? cacheReadTokens : null,
-      costCacheCreateTokens: cacheCreateTokens > 0 ? cacheCreateTokens : null,
-      costAmount,
-      costCurrency: 'USD',
+      ...tokens,
+      costAmount: roundCost(amount),
+      costCurrency: quote.currency,
+      // A rate card is a list price, not a bill: promotions, tiering and
+      // subscription bundling all move the real figure.
       costApproximate: true,
       costFrozenAt,
     };
   }
 
-  // Case 3: Codex with only totalTokens
-  if (
-    typeof input.totalTokens === 'number' &&
-    Number.isFinite(input.totalTokens) &&
-    input.totalTokens > 0
-  ) {
-    const totalTokens = Math.floor(input.totalTokens);
-    // Assume 70% input / 30% output split
-    const estimatedInput = Math.floor(totalTokens * 0.7);
-    const estimatedOutput = totalTokens - estimatedInput;
-    const costAmount = tokensToUsd(estimatedInput, estimatedOutput, 0, 0);
-    return {
-      costQuality: 'estimated',
-      costTotalTokens: totalTokens,
-      costInputTokens: null,
-      costOutputTokens: null,
-      costCacheReadTokens: null,
-      costCacheCreateTokens: null,
-      costAmount,
-      costCurrency: 'USD',
-      costApproximate: true,
-      costFrozenAt,
-    };
-  }
-
-  // Case 4: Nothing useful available
+  // Token counts are still worth keeping even when they cannot be priced —
+  // the sidebar shows usage without claiming a cost.
   return {
     costQuality: 'unavailable',
-    costTotalTokens: null,
-    costInputTokens: null,
-    costOutputTokens: null,
-    costCacheReadTokens: null,
-    costCacheCreateTokens: null,
+    ...tokens,
     costAmount: null,
     costCurrency: null,
     costApproximate: null,
