@@ -2947,6 +2947,10 @@
           "name": "Cindy 메모리",
           "description": "세션 간 컨텍스트를 유지하는 Agent 공통 장기 메모리"
         },
+        "docs": {
+          "name": "문서 공방",
+          "description": "내용을 실제 파일로 — PDF·Word·Excel·PowerPoint 생성과 결과 확인용 읽기. 추가 소프트웨어 설치가 필요 없습니다."
+        },
         "xdt_helper": {
           "name": "Cindy Helper",
           "description": "호스트 기능 공개 — 사용 가능한 도구와 모델을 Agent에 알림"
@@ -4734,6 +4738,13 @@
       "cn": "CN",
       "dev": "Dev"
     },
+    "captcha": {
+      "title": "보안 확인",
+      "loading": "보안 확인을 불러오는 중…",
+      "failed": "보안 확인을 불러오지 못했습니다.",
+      "retry": "다시 시도",
+      "cancel": "취소"
+    },
     "errors": {
       "fallback": "로그인에 실패했습니다. 다시 시도하세요.",
       "AUTH_SERVICE_UNAVAILABLE": "로그인 서비스를 일시적으로 사용할 수 없습니다.",
@@ -4744,6 +4755,9 @@
       "INVALID_CODE": "인증 코드가 잘못되었거나 만료되었습니다.",
       "CODE_ATTEMPTS_EXCEEDED": "시도 횟수를 초과했습니다. 새 코드를 요청하세요.",
       "RATE_LIMITED": "시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
+      "CAPTCHA_REQUIRED": "먼저 보안 확인을 완료하세요.",
+      "CAPTCHA_INVALID": "보안 확인에 실패했습니다. 다시 시도하세요.",
+      "CAPTCHA_UNAVAILABLE": "보안 확인 서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.",
       "SSO_LOGIN_REQUIRED": "이 조직은 SSO 로그인이 필요합니다.",
       "ORG_SSO_NOT_FOUND": "해당 기업을 찾을 수 없거나 SSO 로그인이 활성화되어 있지 않습니다",
       "ORG_REALM_AMBIGUOUS": "이 기업 식별자가 두 지역에 모두 존재합니다. 관리자에게 문의하세요.",
@@ -8622,6 +8636,15 @@
       "filterLastActivityHeading": "최근 활동",
       "filterGroupByHeading": "그룹",
       "filterSortByHeading": "정렬",
+      "filterTaskSortHeading": "세션 정렬",
+      "filterProjectOrderHeading": "프로젝트 순서",
+      "filterProjectOrder": {
+        "activity": "최근 활동순",
+        "custom": "수동"
+      },
+      "filterProjectOrderTip": {
+        "custom": "마우스로 프로젝트 행을 끌어 순서를 바꿉니다. 안의 세션은 위 정렬을 따릅니다."
+      },
       "filterProjectsHeading": "프로젝트",
       "filterAllProjects": "모든 프로젝트",
       "filterHeading": "필터",
@@ -8635,6 +8658,8 @@
       "taskInfo": {
         "time": "시간",
         "pr": "PR 상태",
+        "worktree": "worktree",
+        "openWorktree": "worktree 폴더 열기",
         "tokens": "토큰",
         "cost": "비용"
       },

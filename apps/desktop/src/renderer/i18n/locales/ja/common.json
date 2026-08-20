@@ -2947,6 +2947,10 @@
           "name": "Cindy メモリ",
           "description": "セッションをまたいでコンテキストを保持する Agent 横断の長期メモリ"
         },
+        "docs": {
+          "name": "ドキュメント工房",
+          "description": "内容を実ファイルに — PDF / Word / Excel / PowerPoint を生成し、読み返して仕上がりを確認。追加ソフトのインストールは不要。"
+        },
         "xdt_helper": {
           "name": "Cindy Helper",
           "description": "ホスト機能の開示 — 利用可能なツールとモデルを Agent に伝える"
@@ -4734,6 +4738,13 @@
       "cn": "CN",
       "dev": "Dev"
     },
+    "captcha": {
+      "title": "セキュリティチェック",
+      "loading": "セキュリティチェックを読み込んでいます…",
+      "failed": "セキュリティチェックを読み込めませんでした。",
+      "retry": "再試行",
+      "cancel": "キャンセル"
+    },
     "errors": {
       "fallback": "ログインに失敗しました。再試行してください。",
       "AUTH_SERVICE_UNAVAILABLE": "ログインサービスは一時的に利用できません。",
@@ -4744,6 +4755,9 @@
       "INVALID_CODE": "認証コードが間違っているか期限切れです。",
       "CODE_ATTEMPTS_EXCEEDED": "試行回数を超えました。新しいコードを取得してください。",
       "RATE_LIMITED": "試行が多すぎます。少し待ってから再試行してください。",
+      "CAPTCHA_REQUIRED": "先にセキュリティチェックを完了してください。",
+      "CAPTCHA_INVALID": "セキュリティチェックに失敗しました。もう一度お試しください。",
+      "CAPTCHA_UNAVAILABLE": "セキュリティチェックは一時的に利用できません。しばらくしてから再試行してください。",
       "SSO_LOGIN_REQUIRED": "この組織は SSO ログインが必要です。",
       "ORG_SSO_NOT_FOUND": "該当する企業が見つからないか、SSO サインインが有効になっていません",
       "ORG_REALM_AMBIGUOUS": "この企業識別子は両方の地域に存在します。管理者にお問い合わせください。",
@@ -8622,6 +8636,15 @@
       "filterLastActivityHeading": "最終アクティビティ",
       "filterGroupByHeading": "グループ",
       "filterSortByHeading": "並び替え",
+      "filterTaskSortHeading": "セッション順",
+      "filterProjectOrderHeading": "プロジェクト順",
+      "filterProjectOrder": {
+        "activity": "最近のアクティビティ順",
+        "custom": "手動"
+      },
+      "filterProjectOrderTip": {
+        "custom": "マウスでプロジェクト行をドラッグして並び替え。中のセッションは上の並び替えに従う"
+      },
       "filterProjectsHeading": "プロジェクト",
       "filterAllProjects": "すべてのプロジェクト",
       "filterHeading": "フィルター",
@@ -8635,6 +8658,8 @@
       "taskInfo": {
         "time": "時間",
         "pr": "PR ステータス",
+        "worktree": "worktree",
+        "openWorktree": "worktree フォルダーを開く",
         "tokens": "トークン",
         "cost": "コスト"
       },

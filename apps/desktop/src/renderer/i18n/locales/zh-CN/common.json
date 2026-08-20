@@ -2947,6 +2947,10 @@
           "name": "Cindy 记忆",
           "description": "跨 Agent 的长期记忆，让上下文在任务之间持续"
         },
+        "docs": {
+          "name": "文档工坊",
+          "description": "把内容做成真文件 —— PDF、Word、Excel、PPT，并能回读核对产出。不需要另装任何软件。"
+        },
         "xdt_helper": {
           "name": "Cindy Helper",
           "description": "宿主能力自省 —— 告诉 Agent 当前可用的工具与模型"
@@ -4734,6 +4738,13 @@
       "cn": "CN",
       "dev": "Dev"
     },
+    "captcha": {
+      "title": "安全验证",
+      "loading": "正在加载安全验证…",
+      "failed": "安全验证加载失败",
+      "retry": "重试",
+      "cancel": "取消"
+    },
     "errors": {
       "fallback": "登录失败，请稍后重试",
       "AUTH_SERVICE_UNAVAILABLE": "登录服务暂不可用",
@@ -4744,6 +4755,9 @@
       "INVALID_CODE": "验证码错误或已过期",
       "CODE_ATTEMPTS_EXCEEDED": "验证码错误次数过多，请重新获取",
       "RATE_LIMITED": "操作过于频繁，请稍后再试",
+      "CAPTCHA_REQUIRED": "请先完成安全验证",
+      "CAPTCHA_INVALID": "安全验证未通过，请重试",
+      "CAPTCHA_UNAVAILABLE": "安全验证服务暂不可用，请稍后再试",
       "SSO_LOGIN_REQUIRED": "该邮箱所属企业要求通过 SSO 登录",
       "ORG_SSO_NOT_FOUND": "未找到该企业，或该企业未启用 SSO 登录",
       "ORG_REALM_AMBIGUOUS": "该企业标识同时存在于两个区域，请联系企业管理员处理",
@@ -8622,6 +8636,15 @@
       "filterLastActivityHeading": "最近活跃",
       "filterGroupByHeading": "分组",
       "filterSortByHeading": "排序",
+      "filterTaskSortHeading": "任务排序",
+      "filterProjectOrderHeading": "项目顺序",
+      "filterProjectOrder": {
+        "activity": "按最近活动",
+        "custom": "手动"
+      },
+      "filterProjectOrderTip": {
+        "custom": "用鼠标拖动项目行调整顺序，组内任务仍按上面的排序"
+      },
       "filterProjectsHeading": "项目",
       "filterAllProjects": "所有项目",
       "filterHeading": "筛选",
@@ -8635,6 +8658,8 @@
       "taskInfo": {
         "time": "时间",
         "pr": "PR 状态",
+        "worktree": "worktree",
+        "openWorktree": "打开 worktree 文件夹",
         "tokens": "Token",
         "cost": "费用"
       },

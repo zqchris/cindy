@@ -2948,6 +2948,10 @@
           "name": "Cindy Memory",
           "description": "Cross-agent long-term memory for persistent context across sessions"
         },
+        "docs": {
+          "name": "Document Toolkit",
+          "description": "Turn content into real files — PDF, Word, Excel, and PowerPoint — and read them back to verify the result. No extra software to install."
+        },
         "xdt_helper": {
           "name": "Cindy Helper",
           "description": "Host capability disclosure — tells agents what tools and models are available"
@@ -4736,6 +4740,13 @@
       "cn": "CN",
       "dev": "Dev"
     },
+    "captcha": {
+      "title": "Security check",
+      "loading": "Loading security check…",
+      "failed": "Failed to load the security check.",
+      "retry": "Retry",
+      "cancel": "Cancel"
+    },
     "errors": {
       "fallback": "Sign-in failed. Please try again.",
       "AUTH_SERVICE_UNAVAILABLE": "The sign-in service is temporarily unavailable.",
@@ -4746,6 +4757,9 @@
       "INVALID_CODE": "The verification code is incorrect or expired.",
       "CODE_ATTEMPTS_EXCEEDED": "Too many incorrect attempts. Request a new code.",
       "RATE_LIMITED": "Too many attempts. Please wait and try again.",
+      "CAPTCHA_REQUIRED": "Please complete the security check first.",
+      "CAPTCHA_INVALID": "Security check failed. Please try again.",
+      "CAPTCHA_UNAVAILABLE": "The security check is temporarily unavailable. Please try again later.",
       "SSO_LOGIN_REQUIRED": "This organization requires SSO sign-in.",
       "ORG_SSO_NOT_FOUND": "Company not found, or it has no SSO connection enabled",
       "ORG_REALM_AMBIGUOUS": "This enterprise identifier exists in both regions. Contact your administrator.",
@@ -8634,6 +8648,15 @@
       "filterLastActivityHeading": "Last activity",
       "filterGroupByHeading": "Group by",
       "filterSortByHeading": "Sort by",
+      "filterTaskSortHeading": "Session sort",
+      "filterProjectOrderHeading": "Project order",
+      "filterProjectOrder": {
+        "activity": "By recent activity",
+        "custom": "Manual"
+      },
+      "filterProjectOrderTip": {
+        "custom": "Drag project rows with the mouse to reorder. Sessions inside still follow the sort above."
+      },
       "filterProjectsHeading": "Projects",
       "filterAllProjects": "All projects",
       "filterHeading": "Filters",
@@ -8647,6 +8670,8 @@
       "taskInfo": {
         "time": "Time",
         "pr": "PR status",
+        "worktree": "worktree",
+        "openWorktree": "Open worktree folder",
         "tokens": "Tokens",
         "cost": "Cost"
       },
