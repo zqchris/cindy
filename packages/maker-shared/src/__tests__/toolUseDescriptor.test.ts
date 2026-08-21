@@ -4,6 +4,7 @@ import {
   describeToolUse,
   humanizeToolToken,
   parseToolName,
+  sourcePathCandidatesFromDescriptor,
   piEditReplacements,
   truncateToolText,
 } from '../toolUseDescriptor';
@@ -535,5 +536,30 @@ describe('MCP 工具的产出文件(outPath 约定)', () => {
     expect(createdPathsFromDescriptor(describeToolUse('Edit', { file_path: '/tmp/a.txt' }))).toEqual(
       [],
     );
+  });
+});
+
+describe('中间件不算成品(素材候选)', () => {
+  it('产出型调用引用的其它路径会被列为素材候选', () => {
+    const d = describeToolUse('mcp__cindy_docs__render_pdf', {
+      htmlPath: 'tmp/design.html',
+      outPath: 'documents/report.pdf',
+    });
+    expect(sourcePathCandidatesFromDescriptor(d)).toContain('tmp/design.html');
+    // 产物本身不会把自己列成素材。
+    expect(sourcePathCandidatesFromDescriptor(d)).not.toContain('documents/report.pdf');
+  });
+
+  it('内联正文不会被当成路径候选(html/markdown 动辄上千字)', () => {
+    const d = describeToolUse('mcp__cindy_docs__render_pdf', {
+      html: `<html>${'x'.repeat(2000)}</html>`,
+      outPath: 'documents/report.pdf',
+    });
+    expect(sourcePathCandidatesFromDescriptor(d)).toEqual([]);
+  });
+
+  it('不产出文件的调用没有素材候选(读类工具不该反杀任何东西)', () => {
+    const d = describeToolUse('mcp__cindy_docs__read_sheet', { path: 'data.xlsx' });
+    expect(sourcePathCandidatesFromDescriptor(d)).toEqual([]);
   });
 });

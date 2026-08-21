@@ -159,6 +159,17 @@ export type ToolUseDescriptor =
        * （文件不存在就不出 chip）。
        */
       createdPath?: string;
+      /**
+       * 这次调用**读进来当素材**的路径候选（只有它自己也产出文件时才有值）。
+       *
+       * 「产出 B 的过程中读了 C」⇒ C 是中间件，不是交付物。`render_pdf` 拿一份自己
+       * 写的 HTML 渲染成 PDF 就是这个形态：那份 HTML 是设计稿，不该跟成品并排摆给
+       * 用户看（2026-08-21 实测，对话里冒出了一张 `q3-summary.html` 卡）。
+       *
+       * 不猜字段名：input 里的字符串值全部作为候选，由消费端与「本轮真的产出过的
+       * 文件」求交集来定。没产出过的字符串自然命不中，误伤不了正文里的普通参数。
+       */
+      sourceCandidates?: string[];
     }
   | {
       kind: 'dynamic';
@@ -245,6 +256,7 @@ export function describeToolUse(toolName: string, input: unknown): ToolUseDescri
   const parsed = parseToolName(toolName);
   if (parsed.kind === 'mcp') {
     const createdPath = mcpOutputPath(inp);
+    const sourceCandidates = createdPath ? mcpSourceCandidates(inp, createdPath) : [];
     return {
       kind: 'mcp',
       toolName,
@@ -254,6 +266,7 @@ export function describeToolUse(toolName: string, input: unknown): ToolUseDescri
       toolLabel: humanizeToolToken(parsed.tool),
       ...withDetail(inp),
       ...(createdPath ? { createdPath } : {}),
+      ...(sourceCandidates.length > 0 ? { sourceCandidates } : {}),
     };
   }
   if (parsed.kind === 'dynamic') {
@@ -470,6 +483,30 @@ function mcpOutputPath(inp: Record<string, unknown> | null): string | undefined 
   return undefined;
 }
 
+/**
+ * 产出型调用里可能是「素材路径」的字符串。见 `sourceCandidates` 的说明：
+ * 这里只负责把候选捞出来，是不是真素材由消费端与本轮产物集求交集决定。
+ *
+ * 只看顶层字段，且跳过超长字符串——内联正文（`html`、`markdown`）动辄上千字，
+ * 不可能是路径，也不该被拖进比对。
+ */
+const MCP_SOURCE_CANDIDATE_MAX_CHARS = 512;
+
+function mcpSourceCandidates(
+  inp: Record<string, unknown> | null,
+  createdPath: string,
+): string[] {
+  if (!inp) return [];
+  const out: string[] = [];
+  for (const value of Object.values(inp)) {
+    const text = readNonEmptyString(value);
+    if (!text || text === createdPath) continue;
+    if (text.length > MCP_SOURCE_CANDIDATE_MAX_CHARS) continue;
+    out.push(text);
+  }
+  return out;
+}
+
 function extractDetail(inp: Record<string, unknown> | null): string | undefined {
   if (!inp) return undefined;
   for (const key of DETAIL_KEYS) {
@@ -488,6 +525,15 @@ function extractDetail(inp: Record<string, unknown> | null): string | undefined 
  *
  * 只收新建，不收编辑：改过的文件不是本轮产物。存在性、时间窗这些校验各自在消费端做。
  */
+/**
+ * 一条 tool_use 引用的素材路径候选（只有产出型调用才有）。与
+ * `createdPathsFromDescriptor` 配套：两条链路都要把「产出成品时读走的中间件」
+ * 从成品列表里摘掉，判定收在这里一份。
+ */
+export function sourcePathCandidatesFromDescriptor(descriptor: ToolUseDescriptor): string[] {
+  return descriptor.kind === 'mcp' ? (descriptor.sourceCandidates ?? []) : [];
+}
+
 export function createdPathsFromDescriptor(descriptor: ToolUseDescriptor): string[] {
   if (descriptor.kind === 'file') {
     return descriptor.action === 'create' && descriptor.filePath ? [descriptor.filePath] : [];
