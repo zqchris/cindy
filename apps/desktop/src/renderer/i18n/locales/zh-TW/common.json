@@ -5296,10 +5296,10 @@
         "title": "開始一個面板",
         "desc": "在右側開啟檔案、審查、資源用量、內建瀏覽器或終端，與左側對話並行工作。",
         "botTitle": "作品和協同",
-        "botDesc": "夥伴任務預設開啟作品倉庫和 {{pronoun}} 的協同。審查、終端這些工程面板需要時再加。",
+        "botDesc": "夥伴任務預設開啟作品倉庫和{{pronoun}}的協同。審查、終端這些工程面板需要時再加。",
         "openArtifacts": "開啟作品",
-        "artifactsSub": "{{pronoun}} 交出來的東西",
-        "openDelegations": "開啟 {{pronoun}} 的協同",
+        "artifactsSub": "{{pronoun}}交出來的東西",
+        "openDelegations": "開啟{{pronoun}}的協同",
         "delegationsSub": "委派和回傳",
         "openFile": "開啟檔案",
         "fileSub": "Files",
@@ -6479,7 +6479,7 @@
           }
         }
       },
-      "archivedNote": "已歸檔的夥伴不接手任何任務動靜。先恢復 {{pronoun}}，這裡才能重新開啟。"
+      "archivedNote": "已歸檔的夥伴不接手任何任務動靜。先恢復{{pronoun}}，這裡才能重新開啟。"
     },
     "adapterBoundaryTitle": "保留訊息層邊界",
     "adapterBoundaryDescription": "Telegram 引用、飛書卡片、Slack thread 與本地投遞仍由各自 adapter 負責。本頁只負責夥伴身分與任務投影。",
@@ -6545,7 +6545,7 @@
     "automations": {
       "title": "夥伴自動化",
       "description": "這個夥伴自己會執行的 Routine——依時間表執行，或你按「立即執行」時執行。",
-      "trustedRequired": "無人值守執行時沒有人能按同意。先在和 {{pronoun}} 的對話裡，把輸入框的權限切成「完全訪問」，再回來建。",
+      "trustedRequired": "無人值守執行時沒有人能按同意。先在和{{pronoun}}的對話裡，把輸入框的權限切成「完全訪問」，再回來建。",
       "name": "名稱",
       "dailyTime": "每天執行時間",
       "intervalMinutes": "間隔分鐘數",
@@ -6557,7 +6557,7 @@
       "noteNamespace": "執行筆記空間",
       "create": "建立 Routine",
       "creating": "正在建立…",
-      "empty": "還沒有日程。一句話告訴 {{pronoun}} 每天 / 每週做什麼。",
+      "empty": "還沒有日程。一句話告訴{{pronoun}}每天 / 每週做什麼。",
       "loading": "正在讀取自動化…",
       "refresh": "重新整理自動化",
       "runNow": "立即執行",
@@ -6804,39 +6804,39 @@
     "roster": {
       "backToRoster": "返回陣容",
       "customAction": "自己捏一個",
-      "customHint": "個性、記憶和行程都可以加入之後在 {{pronoun}} 的設定裡慢慢調。",
-      "customIntro": "說一句 {{pronoun}} 是誰，我先替你寫一版；也可以完全自己來。",
+      "customHint": "個性、記憶和行程，加入之後都能在各自的設定裡慢慢調。",
+      "customIntro": "說一句你想要個什麼樣的伙伴，我先替你寫一版；也可以完全自己來。",
       "customName": "自訂",
       "customNameLabel": "叫什麼",
       "customNamePlaceholder": "例如：阿橘",
       "customSkill": "你說了算",
-      "customSubtitle": "取個名字，挑張臉，先讓 {{pronoun}} 進來。",
+      "customSubtitle": "取個名字，挑張臉，就可以加入了。",
       "customTitle": "捏一個自己的伙伴",
-      "footerHint": "加入後 {{pronoun}} 會先跟你打聲招呼。訊息通道可以之後在 {{pronoun}} 的設定裡接（每個伙伴一個）。",
+      "footerHint": "加入後，新伙伴會先跟你打聲招呼。訊息通道可以之後在各自的設定裡接（每個伙伴一個）。",
       "goodAt": "擅長 · {{skill}}",
       "importLink": "已經有伙伴檔案？匯入一個",
-      "join": "讓 {{pronoun}} 加入",
+      "join": "讓{{pronoun}}加入",
       "joined": "已加入",
       "subtitle": "挑一個合拍的，或者自己捏一個。",
       "title": "認識你的伙伴",
       "customAvatarLabel": "挑張頭像",
       "generate": {
-        "title": "{{pronoun}} 是誰？",
+        "title": "想要個什麼樣的伙伴？",
         "subtitle": "一句話就行——名字、性格、背景我先替你寫一版，你再改。",
-        "inputLabel": "一句話說說 {{pronoun}}",
+        "inputLabel": "一句話說說你想要的伙伴",
         "inputPlaceholder": "例如：設計師 / 能幫我盯小孩功課的助理",
         "action": "幫我生成",
         "generating": "生成中…",
         "skip": "跳過，自己寫",
         "previewTitle": "你看看這位",
-        "previewSubtitle": "哪裡不對就直接改，改完再讓 {{pronoun}} 加入。",
+        "previewSubtitle": "哪裡不對就直接改，改完再讓{{pronoun}}加入。",
         "descriptionLabel": "一句話簡介",
-        "memoriesLabel": "{{pronoun}} 一開始就記得的",
+        "memoriesLabel": "{{pronoun}}一開始就記得的",
         "memoriesEmpty": "這次沒生成初始記憶。",
         "confirm": "就這樣，建立",
         "regenerate": "換句話重說",
         "errors": {
-          "emptyInput": "先寫一句 {{pronoun}} 是誰。",
+          "emptyInput": "先寫一句你想要個什麼樣的伙伴。",
           "providerNotReady": "還沒有可用的模型來源——先登入或接一個再生成。你也可以直接自己寫。",
           "invalidOutput": "這次生成的內容看不懂。再試一次，或者自己寫。",
           "failed": "這次沒生成出來。再試一次，或者自己寫。",
@@ -6850,38 +6850,38 @@
     },
     "globalSettings": {
       "title": "伙伴",
-      "description": "和伙伴有關的通用設定。單個伙伴的設定在 {{pronoun}} 自己的頁面裡。",
+      "description": "和伙伴有關的通用設定。單個伙伴的設定在{{pronoun}}自己的頁面裡。",
       "notifications": {
         "title": "新訊息提醒",
         "note": "夥伴的新訊息會在左邊的夥伴列表上標出未讀，不彈系統橫幅、也不響聲音。",
-        "footnote": "像「總控」這類夥伴會自己關注任務動靜——那是 {{pronoun}} 的本事，不在這裡設定。"
+        "footnote": "像「總控」這類夥伴會自己關注任務動靜——那是{{pronoun}}的本事，不在這裡設定。"
       },
       "portability": {
         "importTitle": "匯入伙伴",
-        "importHint": "從一個伙伴檔案裡還原 {{pronoun}}。",
+        "importHint": "從一個伙伴檔案裡還原{{pronoun}}。",
         "importAction": "選擇檔案",
         "exportTitle": "匯出伙伴",
-        "exportHint": "把 {{pronoun}} 的個性和設定打包帶走。",
+        "exportHint": "把{{pronoun}}的個性和設定打包帶走。",
         "exportAction": "匯出",
         "exportEmpty": "還沒有伙伴可以匯出。"
       },
       "rosterNote": "預置陣容會隨版本更新。"
     },
     "settingsBlocks": {
-      "who": "{{pronoun}} 是誰",
-      "can": "{{pronoun}} 會的",
-      "understand": "{{pronoun}} 懂的",
-      "schedule": "{{pronoun}} 的日程",
+      "who": "{{pronoun}}是誰",
+      "can": "{{pronoun}}會的",
+      "understand": "{{pronoun}}懂的",
+      "schedule": "{{pronoun}}的日程",
       "advanced": "進階",
       "whoDescription": "性格不用你寫——選幾下就好。",
-      "canDescription": "這些不用你開——{{pronoun}} 生下來就會。",
-      "understandDescription": "給 {{pronoun}} 一個資料夾，{{pronoun}} 就懂你的專案。",
+      "canDescription": "這些不用你開——{{pronoun}}生下來就會。",
+      "understandDescription": "給{{pronoun}}一個資料夾，{{pronoun}}就懂你的專案。",
       "scheduleDescription": "到點自己幹，不用你在。"
     },
     "advancedLinkLabel": "進階（模型、技術細節、匯出）",
     "persona": {
       "title": "調整性格",
-      "description": "選三下就好，{{pronoun}} 會照著改口氣。",
+      "description": "選三下就好，{{pronoun}}會照著改口氣。",
       "adjustButton": "調整性格",
       "stepStyle": "說話風格",
       "stepProactivity": "主動程度",
@@ -6919,8 +6919,8 @@
         "boss": "老闆",
         "custom": "自訂"
       },
-      "customCallPlaceholder": "讓 {{pronoun}} 怎麼叫你",
-      "previewTitle": "現在的 {{pronoun}}",
+      "customCallPlaceholder": "讓{{pronoun}}怎麼叫你",
+      "previewTitle": "現在的{{pronoun}}",
       "summaryUnset": "還沒設定",
       "summaryCallName": "直呼你名字",
       "summaryCallBoss": "叫你老闆",
@@ -6938,32 +6938,32 @@
       }
     },
     "memoryList": {
-      "title": "{{pronoun}} 記得的",
+      "title": "{{pronoun}}記得的",
       "empty": "還沒記住什麼——多聊幾句就有了。",
       "clearAll": "清空記憶",
       "clearing": "清空中…",
       "clearTitle": "清空記憶",
-      "clearDescription": "清空後 {{pronoun}} 會忘掉這些事，聊過的內容不受影響。要繼續嗎？",
+      "clearDescription": "清空後{{pronoun}}會忘掉這些事，聊過的內容不受影響。要繼續嗎？",
       "clearConfirm": "清空",
       "deleteTitle": "刪除這條記憶",
       "deleteDescription": "刪除「{{title}}」？刪除後無法恢復。",
       "deleteConfirm": "刪除",
       "deleteAria": "刪除「{{title}}」",
-      "footnote": "{{pronoun}} 會自己往這裡記東西，你隨時可以刪。",
-      "footnoteWithSeed": "有幾條是 {{pronoun}} 加入時自帶的，之後 {{pronoun}} 會自己往這裡記。你隨時可以刪。",
-      "seedBack": "補寫 {{pronoun}} 的開場筆記",
+      "footnote": "{{pronoun}}會自己往這裡記東西，你隨時可以刪。",
+      "footnoteWithSeed": "有幾條是{{pronoun}}加入時自帶的，之後{{pronoun}}會自己往這裡記。你隨時可以刪。",
+      "seedBack": "補寫{{pronoun}}的開場筆記",
       "seedingBack": "補寫中…"
     },
     "learned": {
-      "title": "{{pronoun}} 學會的",
-      "empty": "還沒長出什麼本事——多讓 {{pronoun}} 做幾件事。",
-      "notesTitle": "{{pronoun}} 給自己記的做法",
+      "title": "{{pronoun}}學會的",
+      "empty": "還沒長出什麼本事——多讓{{pronoun}}做幾件事。",
+      "notesTitle": "{{pronoun}}給自己記的做法",
       "deleteTitle": "刪除這個技能",
-      "deleteDescription": "刪除「{{title}}」？從下一次任務起 {{pronoun}} 就不會再用它了。",
+      "deleteDescription": "刪除「{{title}}」？從下一次任務起{{pronoun}}就不會再用它了。",
       "deleteConfirm": "刪除",
       "deleteAria": "刪除「{{title}}」",
       "loadingBody": "開啟中…",
-      "footnote": "{{pronoun}} 會從做過的事裡自己長本事，用得越多越順手。"
+      "footnote": "{{pronoun}}會從做過的事裡自己長本事，用得越多越順手。"
     },
     "growth": {
       "rememberedOne": "記住了：{{title}}",
@@ -6972,7 +6972,7 @@
       "learnedOne": "學會了一個新本事：{{title}}",
       "learnedMany": "學會了 {{count}} 個新本事",
       "learnedFallback": "學會了一個新本事",
-      "hint": "點開看 {{pronoun}} 記下了什麼"
+      "hint": "點開看{{pronoun}}記下了什麼"
     },
     "abilityWall": {
       "builtinTitle": "自帶",
@@ -6986,13 +6986,13 @@
       },
       "connectAccount": "連接帳號",
       "imBlocked": "一個夥伴只能連一個 IM——先斷開 {{channel}}",
-      "footnote": "連上以後不用再設定什麼——{{pronoun}} 自己知道怎麼用。"
+      "footnote": "連上以後不用再設定什麼——{{pronoun}}自己知道怎麼用。"
     },
     "folders": {
-      "addButton": "＋ 給 {{pronoun}} 一個資料夾",
+      "addButton": "＋ 給{{pronoun}}一個資料夾",
       "adding": "新增中…",
       "remove": "移除",
-      "footnote": "{{pronoun}} 會自己讀資料夾裡的東西，對話時直接用。"
+      "footnote": "{{pronoun}}會自己讀資料夾裡的東西，對話時直接用。"
     },
     "advancedIdentity": {
       "title": "描述與背景"
@@ -7041,8 +7041,8 @@
       "openFailed": "打不開這件作品，再試一次。",
       "reveal": "在倉庫中檢視",
       "retry": "重試",
-      "subtitle": "{{pronoun}} 做出來的東西",
-      "empty": "{{pronoun}} 還沒交付過東西。做完一件就會收進這裡。",
+      "subtitle": "{{pronoun}}做出來的東西",
+      "empty": "{{pronoun}}還沒交付過東西。做完一件就會收進這裡。",
       "emptyFiltered": "這一類還沒有。",
       "truncated": "只顯示最近 200 件。",
       "remoteUnavailable": "遠端任務暫不支援作品集。",
@@ -7076,9 +7076,9 @@
       "title": "背景設定",
       "edit": "編輯",
       "done": "完成",
-      "placeholder": "{{pronoun}} 是誰、負責什麼、做事的分寸。",
-      "empty": "還沒寫背景設定——寫幾句，{{pronoun}} 就更像 {{pronoun}}。",
-      "footnote": "這段會跟著 {{pronoun}} 一起進對話。上面那三檔口氣單獨調，改這裡不會動到它。"
+      "placeholder": "{{pronoun}}是誰、負責什麼、做事的分寸。",
+      "empty": "還沒寫背景設定——寫幾句，{{pronoun}}就更像{{pronoun}}。",
+      "footnote": "這段會跟著{{pronoun}}一起進對話。上面那三檔口氣單獨調，改這裡不會動到它。"
     },
     "welcome": {
       "generic": "嗨，我是{{name}}。以後有事直接跟我說，我先熟悉一下這裡。",

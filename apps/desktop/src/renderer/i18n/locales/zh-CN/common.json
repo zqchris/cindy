@@ -5298,8 +5298,8 @@
         "botTitle": "作品和协同",
         "botDesc": "伙伴任务默认打开作品集和协同。审查、终端这些工程面板需要时再加。",
         "openArtifacts": "打开作品集",
-        "artifactsSub": "{{pronoun}} 交出来的东西",
-        "openDelegations": "打开 {{pronoun}} 的协同",
+        "artifactsSub": "{{pronoun}}交出来的东西",
+        "openDelegations": "打开{{pronoun}}的协同",
         "delegationsSub": "委派和回传",
         "openFile": "打开文件",
         "fileSub": "Files",
@@ -6479,7 +6479,7 @@
           }
         }
       },
-      "archivedNote": "已归档的伙伴不接手任何任务动静。先恢复 {{pronoun}}，这里才能重新打开。"
+      "archivedNote": "已归档的伙伴不接手任何任务动静。先恢复{{pronoun}}，这里才能重新打开。"
     },
     "adapterBoundaryTitle": "保留消息层边界",
     "adapterBoundaryDescription": "Telegram 引用、飞书卡片、Slack thread 和本地投递仍由各自 adapter 负责。本页面只负责伙伴身份和任务投影。",
@@ -6545,7 +6545,7 @@
     "automations": {
       "title": "伙伴自动化",
       "description": "这个伙伴自己会跑的 Routine——按时间表跑，或者你点「立即运行」时跑。",
-      "trustedRequired": "无人值守跑的时候没人能点同意。先在和 {{pronoun}} 的对话里，把输入框的权限切成「完全访问」，再回来建。",
+      "trustedRequired": "无人值守跑的时候没人能点同意。先在和{{pronoun}}的对话里，把输入框的权限切成「完全访问」，再回来建。",
       "name": "名称",
       "dailyTime": "每天运行时间",
       "intervalMinutes": "间隔分钟数",
@@ -6557,7 +6557,7 @@
       "noteNamespace": "运行笔记空间",
       "create": "创建 Routine",
       "creating": "正在创建…",
-      "empty": "还没有日程。一句话告诉 {{pronoun}} 每天 / 每周做什么。",
+      "empty": "还没有日程。一句话告诉{{pronoun}}每天 / 每周做什么。",
       "loading": "正在读取自动化…",
       "refresh": "刷新自动化",
       "runNow": "立即运行",
@@ -6804,39 +6804,39 @@
     "roster": {
       "backToRoster": "返回阵容",
       "customAction": "自己捏一个",
-      "customHint": "性格、记忆和日程都可以加入之后在 {{pronoun}} 的设置里慢慢调。",
-      "customIntro": "说一句 {{pronoun}} 是谁，我先替你写一版；也可以完全自己来。",
+      "customHint": "性格、记忆和日程，加入之后都能在各自的设置里慢慢调。",
+      "customIntro": "说一句你想要个什么样的伙伴，我先替你写一版；也可以完全自己来。",
       "customName": "自定义",
       "customNameLabel": "叫什么",
       "customNamePlaceholder": "比如：阿橘",
       "customSkill": "你说了算",
-      "customSubtitle": "起个名字，挑张脸，先让 {{pronoun}} 进来。",
+      "customSubtitle": "起个名字，挑张脸，就可以加入了。",
       "customTitle": "捏一个自己的伙伴",
-      "footerHint": "加入后 {{pronoun}} 会先跟你打个招呼。消息通道可以之后在 {{pronoun}} 的设置里连（每个伙伴一个）。",
+      "footerHint": "加入后，新伙伴会先跟你打个招呼。消息通道可以之后在各自的设置里连（每个伙伴一个）。",
       "goodAt": "擅长 · {{skill}}",
       "importLink": "已经有伙伴文件？导入一个",
-      "join": "让 {{pronoun}} 加入",
+      "join": "让{{pronoun}}加入",
       "joined": "已加入",
       "subtitle": "挑一个合拍的，或者自己捏一个。",
       "title": "认识你的伙伴",
       "customAvatarLabel": "挑张头像",
       "generate": {
-        "title": "{{pronoun}} 是谁？",
+        "title": "想要个什么样的伙伴？",
         "subtitle": "一句话就行——名字、性格、背景我先替你写一版，你再改。",
-        "inputLabel": "一句话说说 {{pronoun}}",
+        "inputLabel": "一句话说说你想要的伙伴",
         "inputPlaceholder": "比如：设计师 / 能帮我盯娃学习的助理",
         "action": "帮我生成",
         "generating": "生成中…",
         "skip": "跳过，自己写",
         "previewTitle": "你看看这位",
-        "previewSubtitle": "哪儿不对就直接改，改完再让 {{pronoun}} 加入。",
+        "previewSubtitle": "哪儿不对就直接改，改完再让{{pronoun}}加入。",
         "descriptionLabel": "一句话简介",
-        "memoriesLabel": "{{pronoun}} 一开始就记得的",
+        "memoriesLabel": "{{pronoun}}一开始就记得的",
         "memoriesEmpty": "这次没生成初始记忆。",
         "confirm": "就这样，创建",
         "regenerate": "换句话重说",
         "errors": {
-          "emptyInput": "先写一句 {{pronoun}} 是谁。",
+          "emptyInput": "先写一句你想要个什么样的伙伴。",
           "providerNotReady": "还没有可用的模型来源——先登录或连一个再生成。你也可以直接自己写。",
           "invalidOutput": "这次生成的内容没看懂。再试一次，或者自己写。",
           "failed": "这次没生成出来。再试一次，或者自己写。",
@@ -6850,38 +6850,38 @@
     },
     "globalSettings": {
       "title": "伙伴",
-      "description": "和伙伴有关的通用设置。单个伙伴的设置在 {{pronoun}} 自己的页面里。",
+      "description": "和伙伴有关的通用设置。单个伙伴的设置在{{pronoun}}自己的页面里。",
       "notifications": {
         "title": "新消息提醒",
         "note": "伙伴的新消息会在左边的伙伴列表上标出未读，不弹系统横幅、也不响声音。",
-        "footnote": "像「总控」这类伙伴会自己关注任务动静——那是 {{pronoun}} 的本事，不在这里设置。"
+        "footnote": "像「总控」这类伙伴会自己关注任务动静——那是{{pronoun}}的本事，不在这里设置。"
       },
       "portability": {
         "importTitle": "导入伙伴",
-        "importHint": "从一个伙伴文件里恢复 {{pronoun}}。",
+        "importHint": "从一个伙伴文件里恢复{{pronoun}}。",
         "importAction": "选择文件",
         "exportTitle": "导出伙伴",
-        "exportHint": "把 {{pronoun}} 的性格和设置打包带走。",
+        "exportHint": "把{{pronoun}}的性格和设置打包带走。",
         "exportAction": "导出",
         "exportEmpty": "还没有伙伴可以导出。"
       },
       "rosterNote": "预置阵容会随版本更新。"
     },
     "settingsBlocks": {
-      "who": "{{pronoun}} 是谁",
-      "can": "{{pronoun}} 会的",
-      "understand": "{{pronoun}} 懂的",
-      "schedule": "{{pronoun}} 的日程",
+      "who": "{{pronoun}}是谁",
+      "can": "{{pronoun}}会的",
+      "understand": "{{pronoun}}懂的",
+      "schedule": "{{pronoun}}的日程",
       "advanced": "高级",
       "whoDescription": "性格不用你写——选几下就好。",
-      "canDescription": "这些不用你开——{{pronoun}} 生下来就会。",
-      "understandDescription": "给 {{pronoun}} 一个文件夹，{{pronoun}} 就懂你的项目。",
+      "canDescription": "这些不用你开——{{pronoun}}生下来就会。",
+      "understandDescription": "给{{pronoun}}一个文件夹，{{pronoun}}就懂你的项目。",
       "scheduleDescription": "到点自己干，不用你在。"
     },
     "advancedLinkLabel": "高级（模型、技术细节、导出）",
     "persona": {
       "title": "调整性格",
-      "description": "选三下就好，{{pronoun}} 会照着改口气。",
+      "description": "选三下就好，{{pronoun}}会照着改口气。",
       "adjustButton": "调整性格",
       "stepStyle": "说话风格",
       "stepProactivity": "主动程度",
@@ -6919,8 +6919,8 @@
         "boss": "老板",
         "custom": "自定义"
       },
-      "customCallPlaceholder": "让 {{pronoun}} 怎么叫你",
-      "previewTitle": "现在的 {{pronoun}}",
+      "customCallPlaceholder": "让{{pronoun}}怎么叫你",
+      "previewTitle": "现在的{{pronoun}}",
       "summaryUnset": "还没设置",
       "summaryCallName": "直呼你名字",
       "summaryCallBoss": "叫你老板",
@@ -6938,32 +6938,32 @@
       }
     },
     "memoryList": {
-      "title": "{{pronoun}} 记得的",
+      "title": "{{pronoun}}记得的",
       "empty": "还没记住什么——多聊几句就有了。",
       "clearAll": "清空记忆",
       "clearing": "清空中…",
       "clearTitle": "清空记忆",
-      "clearDescription": "清空后 {{pronoun}} 会忘掉这些事，聊过的内容不受影响。要继续吗？",
+      "clearDescription": "清空后{{pronoun}}会忘掉这些事，聊过的内容不受影响。要继续吗？",
       "clearConfirm": "清空",
       "deleteTitle": "删除这条记忆",
       "deleteDescription": "删除“{{title}}”？删除后无法恢复。",
       "deleteConfirm": "删除",
       "deleteAria": "删除“{{title}}”",
-      "footnote": "{{pronoun}} 会自己往这里记东西，你随时可以删。",
-      "footnoteWithSeed": "有几条是 {{pronoun}} 加入时自带的，之后 {{pronoun}} 会自己往这里记。你随时可以删。",
-      "seedBack": "补写 {{pronoun}} 的开场笔记",
+      "footnote": "{{pronoun}}会自己往这里记东西，你随时可以删。",
+      "footnoteWithSeed": "有几条是{{pronoun}}加入时自带的，之后{{pronoun}}会自己往这里记。你随时可以删。",
+      "seedBack": "补写{{pronoun}}的开场笔记",
       "seedingBack": "补写中…"
     },
     "learned": {
-      "title": "{{pronoun}} 学会的",
-      "empty": "还没长出什么本事——多让 {{pronoun}} 做几件事。",
-      "notesTitle": "{{pronoun}} 给自己记的做法",
+      "title": "{{pronoun}}学会的",
+      "empty": "还没长出什么本事——多让{{pronoun}}做几件事。",
+      "notesTitle": "{{pronoun}}给自己记的做法",
       "deleteTitle": "删除这个技能",
-      "deleteDescription": "删除“{{title}}”？从下一次任务起 {{pronoun}} 就不会再用它了。",
+      "deleteDescription": "删除“{{title}}”？从下一次任务起{{pronoun}}就不会再用它了。",
       "deleteConfirm": "删除",
       "deleteAria": "删除“{{title}}”",
       "loadingBody": "打开中…",
-      "footnote": "{{pronoun}} 会从做过的事里自己长本事，用得越多越顺手。"
+      "footnote": "{{pronoun}}会从做过的事里自己长本事，用得越多越顺手。"
     },
     "growth": {
       "rememberedOne": "记住了：{{title}}",
@@ -6972,7 +6972,7 @@
       "learnedOne": "学会了一个新本事：{{title}}",
       "learnedMany": "学会了 {{count}} 个新本事",
       "learnedFallback": "学会了一个新本事",
-      "hint": "点开看 {{pronoun}} 记下了什么"
+      "hint": "点开看{{pronoun}}记下了什么"
     },
     "abilityWall": {
       "builtinTitle": "自带",
@@ -6986,13 +6986,13 @@
       },
       "connectAccount": "连接账号",
       "imBlocked": "一个伙伴只能连一个 IM——先断开 {{channel}}",
-      "footnote": "连上以后不用再设置什么——{{pronoun}} 自己知道怎么用。"
+      "footnote": "连上以后不用再设置什么——{{pronoun}}自己知道怎么用。"
     },
     "folders": {
-      "addButton": "＋ 给 {{pronoun}} 一个文件夹",
+      "addButton": "＋ 给{{pronoun}}一个文件夹",
       "adding": "添加中…",
       "remove": "移除",
-      "footnote": "{{pronoun}} 会自己读文件夹里的东西，对话时直接用。"
+      "footnote": "{{pronoun}}会自己读文件夹里的东西，对话时直接用。"
     },
     "advancedIdentity": {
       "title": "描述与背景"
@@ -7041,8 +7041,8 @@
       "openFailed": "打不开这件作品，再试一次。",
       "reveal": "在仓库中查看",
       "retry": "重试",
-      "subtitle": "{{pronoun}} 做出来的东西",
-      "empty": "{{pronoun}} 还没交付过东西。做完一件就会收进这里。",
+      "subtitle": "{{pronoun}}做出来的东西",
+      "empty": "{{pronoun}}还没交付过东西。做完一件就会收进这里。",
       "emptyFiltered": "这一类还没有。",
       "truncated": "只显示最近 200 件。",
       "remoteUnavailable": "远程任务暂不支持作品集。",
@@ -7076,9 +7076,9 @@
       "title": "背景设定",
       "edit": "编辑",
       "done": "完成",
-      "placeholder": "{{pronoun}} 是谁、负责什么、做事的分寸。",
-      "empty": "还没写背景设定——写几句，{{pronoun}} 就更像 {{pronoun}}。",
-      "footnote": "这段会跟着 {{pronoun}} 一起进对话。上面那三档口气单独调，改这里不会动到它。"
+      "placeholder": "{{pronoun}}是谁、负责什么、做事的分寸。",
+      "empty": "还没写背景设定——写几句，{{pronoun}}就更像{{pronoun}}。",
+      "footnote": "这段会跟着{{pronoun}}一起进对话。上面那三档口气单独调，改这里不会动到它。"
     },
     "welcome": {
       "generic": "嗨，我是{{name}}。以后有事直接跟我说，我先熟悉一下这儿。",

@@ -19,7 +19,7 @@
  *   (消息无 createdAt / 远程会话无法 stat)时宁可不出。tool 来源保持原判定。
  */
 
-import { describeToolUse } from '@cindy/maker-shared';
+import { createdPathsFromDescriptor, describeToolUse } from '@cindy/maker-shared';
 
 import { extractCommandOutputPathCandidates } from '../../shared/commandOutputPaths';
 import { resolveToolFilePath } from './localPathResolver';
@@ -82,16 +82,9 @@ function canonicalizeWindowsShape(abs: string): string {
   return /^[a-zA-Z]:[\\/]/.test(abs) ? abs.replace(/\//g, '\\').replace(/\\{2,}/g, '\\') : abs;
 }
 
-/** 单条 tool_use 消息 → 它新建的文件原始路径列表(可能为空)。 */
+/** 单条 tool_use 消息 → 它新建的文件原始路径列表(可能为空)。判定在共享包里。 */
 function createdPathsFromToolUse(toolName: string, input: unknown): string[] {
-  const descriptor = describeToolUse(toolName, input);
-  if (descriptor.kind === 'file') {
-    return descriptor.action === 'create' && descriptor.filePath ? [descriptor.filePath] : [];
-  }
-  if (descriptor.kind === 'fileChange') {
-    return descriptor.changes.filter((c) => c.action === 'add' && c.path).map((c) => c.path);
-  }
-  return [];
+  return createdPathsFromDescriptor(describeToolUse(toolName, input));
 }
 
 
