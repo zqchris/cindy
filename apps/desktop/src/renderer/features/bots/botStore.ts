@@ -207,7 +207,11 @@ const STORAGE_KEY = 'cindy.bots.v1';
 const SQLITE_MIGRATION_KEY = 'cindy.bots.v1.sqlite-migrated';
 
 /**
- * 新建伙伴的默认模型:用户真正选过的优先,没选过就跟系统默认。
+ * 伙伴该用哪个模型:用户真正选过的优先,没选过就跟系统默认。
+ *
+ * 新建伙伴与**设置页换 harness** 共用这一条 —— 换 harness 时原来直接读
+ * `lastByVendor[vendor].model`,把种子快照当成用户的选择,与新建那边曾经的
+ * bug 完全同形。同一个决定不留两份实现。
  *
  * 两条都必须走既有来源,这里不产生任何自己的模型口径:
  *  - `lastByVendor` 的整份快照会随任意 draft 写入落盘,里面的 model 即使用户从没碰过
@@ -219,7 +223,7 @@ const SQLITE_MIGRATION_KEY = 'cindy.bots.v1.sqlite-migrated';
  *    兜底」,结果全新安装的伙伴一律显示那个写死值 —— 那是自造的第三份默认口径,
  *    与选择器打架,已删除。要调默认档位就去改目录,不在这里分叉。
  */
-function defaultBotModel(vendor: ReturnType<typeof vendorForHarness>): string {
+export function defaultBotModel(vendor: ReturnType<typeof vendorForHarness>): string {
   // `||` 不是 `??`:「没选过」在 getPersistedVendorModel 里是空串,不是 null。
   return getPersistedVendorModel(vendor) || getDefaultModelForVendor(vendor).id;
 }

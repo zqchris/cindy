@@ -7086,6 +7086,7 @@
     }
   },
   "commonUi": {
+    "retry": "다시 시도",
     "crossAgentConvert": {
       "asking": {
         "title": "변환 가능한 워크스페이스 설정 감지됨",

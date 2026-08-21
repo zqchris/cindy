@@ -7086,6 +7086,7 @@
     }
   },
   "commonUi": {
+    "retry": "重試",
     "crossAgentConvert": {
       "asking": {
         "title": "檢測到工作區配置可轉換",

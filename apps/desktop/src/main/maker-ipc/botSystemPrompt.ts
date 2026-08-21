@@ -20,6 +20,8 @@
  * 挂载 ≠ 能力可用;能力必须写进提示词才算数。
  */
 
+import { D_DESIGN_VIA_HTML } from '@cindy/mcps';
+
 /** 伙伴运行时已解析的能力信号(plugin id),等价于 Hermes 的 valid_tool_names。 */
 export interface BotPromptCapabilitySignals {
   /** 已生效的 toolset(内置插件 id):'docs' | 'memory' | 'scheduler' | … */
@@ -78,7 +80,10 @@ const DOCS_GUIDANCE = [
   '- `make_xlsx` 做 Excel(.xlsx):传 sheets + rows,表头、冻结、数字格式自动处理;公式要连缓存值一起给。',
   '- `render_pdf` 出 PDF:传一份自包含 HTML(或文件路径),用宿主的排版引擎渲染。',
   '- `read_sheet` 读表格(xlsx / csv / tsv),`inspect_pdf` 体检刚做出来的 PDF(页数、纸型、有没有空白页)。',
-  '正式文档(PDF / PPT / Word)先在 tmp/ 写一份自包含 HTML 当设计稿定版式,再据此生成目标格式 —— 这一步是你自己的工序,不要拿给用户看、也不要中途问他要不要先看草稿。表格类直接生成,不走这一步。',
+  // 工序正文由 cindy_docs 的工具描述提供同一份 —— 那边是所有会话(含普通会话、
+  // 三种 harness)唯一都会读到的位置,这里只是把同一段话在伙伴的能力说明里再讲一次,
+  // 不另写一版免得两处漂移。
+  `做 PPT 的做法:${D_DESIGN_VIA_HTML.trim()} PDF 的 HTML 本身就是版式,一次写到位;Word 与表格由工具内置样式排,直接生成。`,
   '文件写进当前工作目录的 documents/ 下,文件名用「日期-主题」。做完 PDF 一定用 `inspect_pdf` 看一眼再交付:页数对不对、有没有空白页。做完表格用 `read_sheet` 读回核对。',
   '交付时把文件当作品交出去,不要只甩一条路径给用户。',
 ].join('\n');

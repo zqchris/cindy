@@ -7086,6 +7086,7 @@
     }
   },
   "commonUi": {
+    "retry": "再試行",
     "crossAgentConvert": {
       "asking": {
         "title": "変換できるワークスペース設定を検出",
