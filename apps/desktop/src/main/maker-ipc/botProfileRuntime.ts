@@ -696,9 +696,12 @@ export async function hydrateBotProfileRuntime(
     toolsets: resolvedToolsets,
     memoryEnabled: memoryEngineEnabled && config.memory !== false,
     // 委派工具(delegate_to_bot / list_bots / cancel_bot_delegation)住在
-    // cindy_helper 里,它是 essential 插件、恒挂 —— 所以判据是它在不在工具面,
-    // 不是会话控制模式(那管的是"观察别的任务",另一件事)。
-    delegationEnabled: resolvedToolsets.includes('xdt_helper'),
+    // cindy_helper 里 —— 它是 **essential 插件,用户关不掉、恒挂**,所以这里恒为
+    // true,不查 resolvedToolsets:那份清单来自 listToolsets 依赖,宿主没注入或
+    // 目录读失败时会是空数组,一查就把「你能叫别的伙伴帮忙」整段吞掉,伙伴于是
+    // 不知道自己能协作 —— 与文档工具那次事故同一个形状。
+    // (会话控制模式管的是"观察/干预别的任务",另一件事,不参与这个判据。)
+    delegationEnabled: true,
     ownSkillsEnabled: ownSkillPluginRoot !== null,
   };
   const promptInput: BotSystemPromptInput = {

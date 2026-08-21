@@ -872,13 +872,18 @@ describe('Bot canonical Session lifecycle', () => {
     const snapshot = await hydrateBotProfileRuntime(opts);
 
     expect(snapshot?.sessionControlMode).toBe('coordinate');
+    // 边界不变:SOUL(身份段)只放人格,运行时说明一律在上下文段。段落标题
+    // 2026-08-21 随三层重排换过一轮(见 botSystemPrompt.ts)。
     expect(opts.botProfilePrompt).not.toContain('Cindy Task Control');
-    expect(opts.botProfilePrompt).not.toContain('Cindy Bot Runtime');
-    expect(opts.botProfileContextPrompt).toContain('## Cindy Bot Runtime');
-    expect(opts.botProfileContextPrompt).toContain('Use `list_tools`');
-    expect(opts.botProfileContextPrompt).toContain('offer the available delegation path');
+    expect(opts.botProfilePrompt).not.toContain('把活干完');
+    expect(opts.botProfileContextPrompt).toContain('## 把活干完');
+    expect(opts.botProfileContextPrompt).toContain('# 你会做什么');
+    // 委派能力挂在 cindy_helper(essential)上,所以这段恒在。
+    expect(opts.botProfileContextPrompt).toContain('叫别的伙伴帮忙');
     expect(opts.botProfileContextPrompt).toContain('## Cindy Task Control');
     expect(opts.botProfileContextPrompt).toContain('permits coordination');
+    // 事故防线:再不能出现「自己去发现有什么工具」这类说法。
+    expect(opts.botProfileContextPrompt).not.toContain('Use `list_tools`');
     const row = h
       .sqlite!.prepare(
         `SELECT configured_json AS configuredJson, resolved_json AS resolvedJson
