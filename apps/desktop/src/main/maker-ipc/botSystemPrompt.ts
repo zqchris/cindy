@@ -20,8 +20,6 @@
  * 挂载 ≠ 能力可用;能力必须写进提示词才算数。
  */
 
-import { D_DESIGN_VIA_HTML } from '@cindy/mcps';
-
 /** 伙伴运行时已解析的能力信号(plugin id),等价于 Hermes 的 valid_tool_names。 */
 export interface BotPromptCapabilitySignals {
   /** 已生效的 toolset(内置插件 id):'docs' | 'memory' | 'scheduler' | … */
@@ -83,7 +81,10 @@ const DOCS_GUIDANCE = [
   // 工序正文由 cindy_docs 的工具描述提供同一份 —— 那边是所有会话(含普通会话、
   // 三种 harness)唯一都会读到的位置,这里只是把同一段话在伙伴的能力说明里再讲一次,
   // 不另写一版免得两处漂移。
-  `做 PPT 的做法:${D_DESIGN_VIA_HTML.trim()} PDF 的 HTML 本身就是版式,一次写到位;Word 与表格由工具内置样式排,直接生成。`,
+  // 具体工序不在这里重复:每个工具的描述里都带着它自己的做法(先定版式、PPT 要不要
+  // 先写 HTML 设计稿、PDF 怎么排),那份说明会一字不差进模型上下文。这里只提醒一句
+  // 「照工具说明做」,免得同一段话两处各写一版、日后必然漂移。
+  '做正式文档(PDF / PPT / Word)前,先看一眼对应工具说明里写的排版工序,照着做 —— 那一步决定成品好不好看。',
   '文件写进当前工作目录的 documents/ 下,文件名用「日期-主题」。做完 PDF 一定用 `inspect_pdf` 看一眼再交付:页数对不对、有没有空白页。做完表格用 `read_sheet` 读回核对。',
   '交付时把文件当作品交出去,不要只甩一条路径给用户。',
 ].join('\n');

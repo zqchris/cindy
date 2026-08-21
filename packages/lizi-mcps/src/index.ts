@@ -32,11 +32,7 @@ export * from './lizi_xdtHelperMcpServer.js';
 export * from './lizi_xdtHelperToolRegistry.js';
 export * from './xdt-helper/index.js';
 
-export {
-  createCindyDocsMcpServer,
-  // 「先定版式再产出」的工序说明。工具描述与伙伴提示词共用同一份,不各写一遍。
-  D_DESIGN_VIA_HTML,
-} from './cindy_docsMcpServer.js';
+export { createCindyDocsMcpServer } from './cindy_docsMcpServer.js';
 export * from './cindy_docsToolRegistry.js';
 export * from './cindy-docs/index.js';
 

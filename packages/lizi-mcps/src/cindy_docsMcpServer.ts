@@ -70,12 +70,12 @@ const D_COMMON_TAIL =
  *    设计稿没有落点(见 D_DESIGN_DOCX 的说明);
  *  - `make_xlsx` → 不适用:表格好不好看取决于列宽、表头、数字格式。
  */
-export const D_DESIGN_CORE =
+const D_DESIGN_CORE =
   ' 【动手前先定版式】选定一套字号层级、一组配色、统一的留白与对齐,把真实内容填进去' +
   '看层级立不立得住,再开始产出。跳过这一步就是「纯白一片只有字」的来源。';
 
 /** PPT / Word:HTML 只是自己的设计草稿,成品必须由结构化工具还原。 */
-export const D_DESIGN_VIA_HTML =
+const D_DESIGN_VIA_HTML =
   D_DESIGN_CORE +
   '**调本工具之前必须先做这一步,不是可选项**:在 `tmp/` 写一份自包含 HTML 设计稿' +
   '(样式内联)把版式落定,把真实内容填进去逐屏/逐页看一遍,再对着它还原成本工具的' +
