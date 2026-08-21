@@ -6289,7 +6289,7 @@
     "sessionLoadFailedTitle": "无法加载这个伙伴任务",
     "sessionLoadFailedDescription": "任务关联仍然存在，但 Cindy 暂时无法读取伙伴状态。你可以重试，或返回伙伴总览。",
     "sessionUnavailableTitle": "这个伙伴任务已不可用",
-    "sessionUnavailableDescription": "它可能已经 Renew、归档，或不再属于这个伙伴。请返回伙伴总览打开当前任务。",
+    "sessionUnavailableDescription": "它可能已经被新任务接替、收进了历史，或不再属于这个伙伴。返回就能打开当前那个。",
     "settings": "设置",
     "settingsNav": {
       "title": "设置分组"
@@ -6305,9 +6305,9 @@
     "open": "打开",
     "archived": "已归档",
     "sessionLifecycleTitle": "任务生命周期",
-    "sessionLifecycleDescription": "Renew 会归档当前任务，并创建一个新的伙伴主任务。",
-    "renew": "Renew 任务",
-    "renewing": "正在 Renew…",
+    "sessionLifecycleDescription": "开新任务会用上最新的设置，当前这个收进历史，里面的内容不会丢。",
+    "renew": "开个新任务",
+    "renewing": "正在开…",
     "historyTitle": "归档历史",
     "historyDescription": "查看之前的主任务中的完整对话记录。",
     "historyEmpty": "还没有归档的伙伴任务。",
@@ -6339,7 +6339,7 @@
       "archiveTitle": "归档这个伙伴？",
       "archiveDescription": "伙伴会停止接收工作，当前主任务与 Route 任务会进入历史。",
       "deleteTitle": "永久删除伙伴",
-      "deleteDescription": "这会删除 {{name}} 的 Profile、通道挂载和自动化关系，无法撤销。",
+      "deleteDescription": "这会删掉 {{name}}：性格、已连的通道、定的日程都会没。删了找不回来。",
       "keepHistory": "保留任务记录，将它们转为普通的已归档任务。",
       "confirmName": "输入“{{name}}”确认永久删除",
       "worktree": {
@@ -6366,13 +6366,13 @@
         "paused": "已暂停"
       },
       "issues": {
-        "profile-error": "伙伴 Profile 处于错误状态。",
+        "profile-error": "这个伙伴的设置出错了。",
         "missing-canonical": "伙伴主任务尚未创建。",
         "canonical-session-missing": "主任务记录缺失，需要恢复。",
         "canonical-session-deleted": "主任务已被删除，需要创建替代任务。",
         "canonical-link-missing": "主任务丢失了伙伴归属关系。",
         "canonical-link-mismatch": "主任务的伙伴归属关系不一致。",
-        "profile-update-pending": "已保存的 Profile 比当前任务更新；Renew 后生效。",
+        "profile-update-pending": "有更新的设置已保存，下个任务生效。",
         "runtime-degraded": "当前运行环境启动时缺少部分已配置能力。",
         "runtime-failed": "当前运行环境启动失败。",
         "routes-recovering": "{{count}} 个 Route 正在恢复。",
@@ -6410,10 +6410,10 @@
       "events": {
         "created": "已创建伙伴",
         "canonical-created": "已创建主任务",
-        "canonical-renewed": "已 Renew 主任务",
+        "canonical-renewed": "开了新任务",
         "canonical-linked": "已绑定主任务",
         "session-linked": "已关联伙伴历史任务",
-        "legacy-profile-migrated": "已迁移旧伙伴 Profile",
+        "legacy-profile-migrated": "从旧版伙伴设置搬过来了",
         "legacy-session-skipped": "旧任务无法关联",
         "project-binding-upserted": "已更新项目绑定",
         "workspace-lease-released": "已释放工作区",
@@ -6487,15 +6487,15 @@
     "identityTitle": "身份",
     "identitySourceLabel": "伙伴身份说明（SOUL）",
     "identitySourcePlaceholder": "描述这个伙伴的性格、职责和长期行为方式。",
-    "identitySourceDescription": "这段内容会在伙伴任务启动时作为 Profile 身份注入 Agent，不会按每条消息重复前置。",
+    "identitySourceDescription": "这段写的是「它是谁」。任务开始时给它一次，不会每条消息都重复念一遍。",
     "userContextSourceLabel": "用户资料（USER）",
     "userContextSourcePlaceholder": "告诉这个伙伴你是谁、如何称呼你，以及长期不变的偏好。",
-    "userContextSourceDescription": "对应 Hermes 的 USER.md。它与伙伴身份和可写的伙伴 Memory 分开保存，并随 Profile 版本冻结为只读快照。",
+    "userContextSourceDescription": "它该知道的关于你的事。和它的性格、和它自己记下的东西分开存，跟其它设置一起冻在同一个版本里。",
     "chooseAvatar": "选择头像 {{avatar}}",
     "chooseAvatarColor": "选择头像颜色 {{color}}",
     "advancedCapabilities": {
       "title": "这些能力背后的技术细节",
-      "description": "harness、模型、工具、MCP Server 与 Skill。日常使用不需要动这里。"
+      "description": "跑在哪个引擎和模型上，以及工具和技能。日常使用不用动这里。"
     },
     "memoryRecovery": {
       "title": "这个伙伴的长期记忆当前是关的",
@@ -6503,27 +6503,27 @@
       "action": "重新开启记忆"
     },
     "capabilitiesTitle": "能力配置",
-    "capabilitiesDescription": "伙伴任务启动时会按当前 Profile 版本装配这些真实能力。",
-    "capabilitiesDeferred": "能力更新会生成新的 Profile 版本；当前任务继续使用已固定的版本，显式 Renew 后才切换。",
+    "capabilitiesDescription": "任务开始时，它真正拿到的就是这些本事。",
+    "capabilitiesDeferred": "这里改完下个任务生效；当前任务继续用它开始时的那套本事。",
     "profileApply": {
-      "title": "新的 Profile 已保存",
-      "description": "Profile v{{currentVersion}} 已保存，但当前任务仍在使用 v{{activeVersion}}。Renew 会用新 Profile 创建新的主任务，并归档当前任务。",
-      "keepCurrent": "继续使用当前任务",
-      "renewAndApply": "Renew 并应用",
+      "title": "设置已保存",
+      "description": "新设置已经存好了，但当前这个任务还在按旧设置跑。开个新任务才会用上，当前这个会收进历史。",
+      "keepCurrent": "先不换，继续现在这个",
+      "renewAndApply": "开个新任务",
       "saveFailed": "伙伴设置未能保存，变更没有生效。",
-      "renewFailed": "新的 Profile 已保存，但未能创建新的主任务。当前任务没有变化。"
+      "renewFailed": "新设置已经存好了，但没能开出新任务。当前这个任务没有变化。"
     },
     "runtimeState": {
       "saved": "已保存，启动后生效",
       "prepared": "启动配置已准备，尚未确认生效",
       "applied": "当前任务已生效",
-      "pendingRenew": "等待 Renew 生效",
+      "pendingRenew": "下个任务生效",
       "degraded": "部分能力不可用",
       "failed": "上次启动失败，配置未生效"
     },
     "modelLabel": "模型",
     "modelUnavailable": "{{model}}（当前不可用）",
-    "harnessLabel": "Harness",
+    "harnessLabel": "引擎",
     "capabilityMode": {
       "inherit": "使用当前可用能力",
       "allowlist": "逐项选择"
@@ -6541,7 +6541,7 @@
     "memoryLabel": "长期记忆",
     "memoryDescription": "使用只属于这个伙伴的独立记忆空间。",
     "automationLabel": "自动化",
-    "automationDescription": "允许这个伙伴在无人值守时按计划运行。每次运行会固定 Profile 版本、项目、worktree 和投递目标。",
+    "automationDescription": "让这个伙伴在你不在的时候按计划干活。每次运行都会锁定当时的设置、项目和送达对象。",
     "automations": {
       "title": "伙伴自动化",
       "description": "这个伙伴自己会跑的 Routine——按时间表跑，或者你点「立即运行」时跑。",
@@ -6572,7 +6572,7 @@
       "retryingDelivery": "正在重试…",
       "edit": "编辑",
       "saving": "正在保存…",
-      "nextProfileVersion": "下次运行使用 Profile v{{version}}",
+      "nextProfileVersion": "下次运行用现在存好的设置",
       "executionPolicy": "运行上限",
       "executionPolicyDescription": "最长运行分钟数到点即中止本次运行。",
       "timeoutMinutes": "最长运行分钟数",
@@ -6664,7 +6664,7 @@
     "permissionsLabel": "权限模式",
     "permissionAsk": "操作前询问",
     "permissionTrusted": "信任操作",
-    "codexAutomaticCompact": "Codex 伙伴会自动压缩上下文；/new 会保留当前伙伴任务。只有确实需要新任务时，才在伙伴设置中使用 Renew。",
+    "codexAutomaticCompact": "Codex 伙伴会自己压缩上下文，/new 也会保留当前任务。只有确实需要从头开始时，才去开新任务。",
     "chatWelcome": "与 {{name}} 对话",
     "previewHint": "本地预览——消息暂时不会发送给真实 Agent。",
     "chatPlaceholder": "给这个伙伴发消息…",

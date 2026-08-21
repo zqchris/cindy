@@ -264,6 +264,14 @@ export interface CreateBotProfileInput {
   channel?: BotChannel;
   identitySource?: string;
   userContextSource?: string;
+  /**
+   * 角色性别,界面文案据它取「她 / 他」。自建伙伴不给 → 文案改用它自己的名字。
+   *
+   * 此前这个字段**不在类型里**,阵容页用对象展开传进来,TypeScript 对展开不做
+   * 多余属性检查,于是一路被静默丢弃、没有任何报错:卡片上写着「让她加入」,
+   * 点进去设置页却是「林律是谁」(2026-08-21 实机才发现)。
+   */
+  gender?: BotGender;
   avatar?: string;
   avatarColor?: string;
   skills?: string[];
@@ -408,6 +416,8 @@ function normalizeDbProfile(value: unknown): BotProfile | null {
     description: typeof item.description === 'string' ? item.description : '',
     identitySource: typeof item.identitySource === 'string' ? item.identitySource : '',
     userContextSource: typeof item.userContextSource === 'string' ? item.userContextSource : '',
+    // 落库回读的性别。老档案没有 → 留空 → 界面按名字称呼(与升级前一致)。
+    ...(item.gender === 'female' || item.gender === 'male' ? { gender: item.gender } : {}),
     avatar: typeof item.avatar === 'string' ? item.avatar : '🤖',
     avatarColor: typeof item.avatarColor === 'string' ? item.avatarColor : 'violet',
     enabled: item.enabled !== false,
@@ -663,6 +673,9 @@ export function addBotProfile(input: CreateBotProfileInput): BotProfile {
     description: input.description.trim(),
     identitySource: input.identitySource?.trim() || undefined,
     userContextSource: input.userContextSource?.trim() ?? '',
+    // 角色性别:阵容卡传进来,界面文案据它取「她 / 他」。这里漏掉的话后面每一层
+    // 都拿不到 —— 卡上写着「让她加入」,进去就变成按名字称呼(2026-08-21 实机)。
+    ...(input.gender ? { gender: input.gender } : {}),
     avatar: input.avatar?.trim() || '🤖',
     avatarColor: input.avatarColor?.trim() || 'violet',
     enabled: true,
@@ -695,6 +708,9 @@ export async function addBotProfileAndWait(input: CreateBotProfileInput): Promis
         capabilities: bot.capabilities,
         identitySource: bot.identitySource ?? '',
         userContextSource: bot.userContextSource ?? '',
+        // 性别必须一起发过去,否则落库时丢掉,界面只能回落成「用名字称呼」——
+        // 阵容卡上明明写着「让她加入」,进去就变成「林律是谁」(2026-08-21 实机)。
+        ...(bot.gender ? { gender: bot.gender } : {}),
         eventSubscription: input.eventSubscription,
       }),
     );

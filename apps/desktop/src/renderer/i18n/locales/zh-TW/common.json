@@ -6289,7 +6289,7 @@
     "sessionLoadFailedTitle": "無法載入這個夥伴任務",
     "sessionLoadFailedDescription": "任務關聯仍然存在，但 Cindy 暫時無法讀取夥伴狀態。你可以重試，或返回夥伴總覽。",
     "sessionUnavailableTitle": "這個夥伴任務已無法使用",
-    "sessionUnavailableDescription": "它可能已經 Renew、封存，或不再屬於這個夥伴。請返回夥伴總覽開啟目前任務。",
+    "sessionUnavailableDescription": "它可能已經被新任務接替、收進了歷史，或不再屬於這個伙伴。返回就能開啟目前那個。",
     "settings": "設定",
     "settingsNav": {
       "title": "設定分組"
@@ -6305,9 +6305,9 @@
     "open": "開啟",
     "archived": "已封存",
     "sessionLifecycleTitle": "任務生命週期",
-    "sessionLifecycleDescription": "Renew 會封存目前任務，並建立新的夥伴主任務。",
-    "renew": "Renew 任務",
-    "renewing": "正在 Renew…",
+    "sessionLifecycleDescription": "開新任務會用上最新的設定，目前這個收進歷史，裡面的內容不會遺失。",
+    "renew": "開個新任務",
+    "renewing": "正在開…",
     "historyTitle": "封存歷史",
     "historyDescription": "查看之前的主任務中的完整對話記錄。",
     "historyEmpty": "還沒有封存的夥伴任務。",
@@ -6339,7 +6339,7 @@
       "archiveTitle": "封存這個夥伴？",
       "archiveDescription": "夥伴會停止接收工作，目前主任務與 Route 任務會進入歷史。",
       "deleteTitle": "永久刪除夥伴",
-      "deleteDescription": "這會刪除 {{name}} 的 Profile、通道掛載和自動化關係，無法復原。",
+      "deleteDescription": "這會刪掉 {{name}}：個性、已連的通道、排定的行程都會消失。刪了找不回來。",
       "keepHistory": "保留任務記錄，將它們轉為一般的已封存任務。",
       "confirmName": "輸入「{{name}}」確認永久刪除",
       "worktree": {
@@ -6366,13 +6366,13 @@
         "paused": "已暫停"
       },
       "issues": {
-        "profile-error": "夥伴 Profile 處於錯誤狀態。",
+        "profile-error": "這個伙伴的設定出錯了。",
         "missing-canonical": "夥伴主任務尚未建立。",
         "canonical-session-missing": "主任務記錄遺失，需要恢復。",
         "canonical-session-deleted": "主任務已被刪除，需要建立替代任務。",
         "canonical-link-missing": "主任務遺失了夥伴歸屬關係。",
         "canonical-link-mismatch": "主任務的夥伴歸屬關係不一致。",
-        "profile-update-pending": "已儲存的 Profile 比目前任務更新；Renew 後生效。",
+        "profile-update-pending": "有更新的設定已儲存，下個任務生效。",
         "runtime-degraded": "目前執行環境啟動時缺少部分已設定能力。",
         "runtime-failed": "目前執行環境啟動失敗。",
         "routes-recovering": "{{count}} 個 Route 正在恢復。",
@@ -6410,10 +6410,10 @@
       "events": {
         "created": "已建立夥伴",
         "canonical-created": "已建立主任務",
-        "canonical-renewed": "已 Renew 主任務",
+        "canonical-renewed": "開了新任務",
         "canonical-linked": "已連結主任務",
         "session-linked": "已連結夥伴歷史任務",
-        "legacy-profile-migrated": "已遷移舊夥伴 Profile",
+        "legacy-profile-migrated": "從舊版伙伴設定搬過來了",
         "legacy-session-skipped": "舊任務無法連結",
         "project-binding-upserted": "已更新專案連結",
         "workspace-lease-released": "已釋放工作區",
@@ -6487,15 +6487,15 @@
     "identityTitle": "身分",
     "identitySourceLabel": "夥伴身分說明（SOUL）",
     "identitySourcePlaceholder": "描述這個夥伴的個性、職責與長期行為方式。",
-    "identitySourceDescription": "夥伴任務啟動時會作為 Profile 身分載入，不會在每則訊息前重複附加。",
+    "identitySourceDescription": "這段寫的是「它是誰」。任務開始時給它一次，不會每則訊息都重複唸一遍。",
     "userContextSourceLabel": "使用者資料（USER）",
     "userContextSourcePlaceholder": "告訴這個夥伴你是誰、如何稱呼你，以及長期不變的偏好。",
-    "userContextSourceDescription": "對應 Hermes 的 USER.md，與夥伴身分及可寫的夥伴 Memory 分開版本化，並在每次執行時凍結為唯讀快照。",
+    "userContextSourceDescription": "它該知道的關於你的事。和它的個性、和它自己記下的東西分開存，跟其它設定一起凍在同一個版本裡。",
     "chooseAvatar": "選擇頭像 {{avatar}}",
     "chooseAvatarColor": "選擇頭像顏色 {{color}}",
     "advancedCapabilities": {
       "title": "這些能力背後的技術細節",
-      "description": "harness、模型、工具、MCP Server 與 Skill。日常使用不需要動這裡。"
+      "description": "跑在哪個引擎和模型上，以及工具和技能。日常使用不用動這裡。"
     },
     "memoryRecovery": {
       "title": "這個夥伴的長期記憶目前是關閉的",
@@ -6503,27 +6503,27 @@
       "action": "重新開啟記憶"
     },
     "capabilitiesTitle": "能力設定",
-    "capabilitiesDescription": "夥伴任務啟動時會依固定的 Profile 版本載入這些真實能力。",
-    "capabilitiesDeferred": "能力更新會建立新的 Profile 版本；目前任務會繼續使用已固定的版本，明確 Renew 後才切換。",
+    "capabilitiesDescription": "任務開始時，它真正拿到的就是這些本事。",
+    "capabilitiesDeferred": "這裡改完下個任務生效；目前任務繼續用它開始時的那套本事。",
     "profileApply": {
-      "title": "新的 Profile 已儲存",
-      "description": "Profile v{{currentVersion}} 已儲存，但目前任務仍在使用 v{{activeVersion}}。Renew 會以新 Profile 建立新的主任務，並封存目前任務。",
-      "keepCurrent": "繼續使用目前任務",
-      "renewAndApply": "Renew 並套用",
+      "title": "設定已儲存",
+      "description": "新設定已經存好了，但目前這個任務還在按舊設定跑。開個新任務才會用上，目前這個會收進歷史。",
+      "keepCurrent": "先不換，繼續現在這個",
+      "renewAndApply": "開個新任務",
       "saveFailed": "夥伴設定未能儲存，變更沒有生效。",
-      "renewFailed": "新的 Profile 已儲存，但未能建立新的主任務。目前任務沒有變更。"
+      "renewFailed": "新設定已經存好了，但沒能開出新任務。目前這個任務沒有變化。"
     },
     "runtimeState": {
       "saved": "已儲存，啟動後生效",
       "prepared": "啟動設定已準備，尚未確認生效",
       "applied": "目前任務已生效",
-      "pendingRenew": "等待 Renew 生效",
+      "pendingRenew": "下個任務生效",
       "degraded": "部分能力不可用",
       "failed": "上次啟動失敗，設定未生效"
     },
     "modelLabel": "模型",
     "modelUnavailable": "{{model}}（目前無法使用）",
-    "harnessLabel": "Harness",
+    "harnessLabel": "引擎",
     "capabilityMode": {
       "inherit": "使用目前可用能力",
       "allowlist": "逐項選擇"
@@ -6541,7 +6541,7 @@
     "memoryLabel": "長期記憶",
     "memoryDescription": "使用只屬於這個夥伴的獨立記憶空間。",
     "automationLabel": "自動化",
-    "automationDescription": "允許這個夥伴在無人值守時按計畫執行。每次執行會固定 Profile 版本、專案、worktree 與投遞目標。",
+    "automationDescription": "讓這個伙伴在你不在的時候按計畫幹活。每次執行都會鎖定當時的設定、專案和送達對象。",
     "automations": {
       "title": "夥伴自動化",
       "description": "這個夥伴自己會執行的 Routine——依時間表執行，或你按「立即執行」時執行。",
@@ -6572,7 +6572,7 @@
       "retryingDelivery": "正在重試…",
       "edit": "編輯",
       "saving": "正在儲存…",
-      "nextProfileVersion": "下次執行使用 Profile v{{version}}",
+      "nextProfileVersion": "下次執行用現在存好的設定",
       "executionPolicy": "執行上限",
       "executionPolicyDescription": "最長執行分鐘數到點即中止本次執行。",
       "timeoutMinutes": "最長執行分鐘數",
@@ -6664,7 +6664,7 @@
     "permissionsLabel": "權限模式",
     "permissionAsk": "操作前詢問",
     "permissionTrusted": "信任操作",
-    "codexAutomaticCompact": "Codex 夥伴會自動壓縮上下文；/new 會保留目前的夥伴任務。只有確實需要新任務時，才在夥伴設定中使用 Renew。",
+    "codexAutomaticCompact": "Codex 伙伴會自己壓縮上下文，/new 也會保留目前任務。只有確實需要從頭開始時，才去開新任務。",
     "chatWelcome": "與 {{name}} 對話",
     "previewHint": "本地預覽——訊息暫時不會傳送給真實 Agent。",
     "chatPlaceholder": "傳訊息給這個夥伴…",

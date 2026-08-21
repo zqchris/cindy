@@ -6289,7 +6289,7 @@
     "sessionLoadFailedTitle": "この仲間タスクを読み込めませんでした",
     "sessionLoadFailedDescription": "タスクの関連付けは存在しますが、Cindy が仲間の状態を読み取れませんでした。再試行するか、仲間の概要に戻ってください。",
     "sessionUnavailableTitle": "この仲間タスクは利用できません",
-    "sessionUnavailableDescription": "更新、アーカイブ、または仲間から削除された可能性があります。仲間の概要に戻って現在のタスクを開いてください。",
+    "sessionUnavailableDescription": "新しいタスクに引き継がれたか、履歴に移ったか、この相棒のものではなくなった可能性があります。戻ると今のタスクを開けます。",
     "settings": "設定",
     "settingsNav": {
       "title": "設定セクション"
@@ -6305,9 +6305,9 @@
     "open": "開く",
     "archived": "アーカイブ済み",
     "sessionLifecycleTitle": "タスクのライフサイクル",
-    "sessionLifecycleDescription": "Renew は現在のタスクをアーカイブし、新しい仲間メインタスクを作成します。",
-    "renew": "タスクを Renew",
-    "renewing": "Renew 中…",
+    "sessionLifecycleDescription": "新しいタスクを始めると最新の設定が反映されます。今のタスクは履歴に移り、中身は失われません。",
+    "renew": "新しいタスクを始める",
+    "renewing": "開始中…",
     "historyTitle": "アーカイブ履歴",
     "historyDescription": "以前のメインタスクの記録を確認します。",
     "historyEmpty": "アーカイブされた仲間タスクはまだありません。",
@@ -6339,7 +6339,7 @@
       "archiveTitle": "この仲間をアーカイブしますか？",
       "archiveDescription": "仲間は作業の受付を停止し、メインタスクと Route タスクは履歴に移動します。",
       "deleteTitle": "仲間を完全に削除",
-      "deleteDescription": "{{name}} の Profile、チャンネル接続、自動化の関連付けを削除します。元に戻せません。",
+      "deleteDescription": "{{name}} を削除します。性格・つないだチャネル・予定した実行がすべてなくなり、元に戻せません。",
       "keepHistory": "タスク履歴を通常のアーカイブ済みタスクとして残す。",
       "confirmName": "完全削除を確認するには「{{name}}」と入力してください",
       "worktree": {
@@ -6366,13 +6366,13 @@
         "paused": "一時停止"
       },
       "issues": {
-        "profile-error": "仲間 Profile がエラー状態です。",
+        "profile-error": "この相棒の設定にエラーがあります。",
         "missing-canonical": "仲間のメインタスクがまだ作成されていません。",
         "canonical-session-missing": "メインタスクの記録がなく、復旧が必要です。",
         "canonical-session-deleted": "メインタスクが削除され、置き換えが必要です。",
         "canonical-link-missing": "メインタスクの仲間所有リンクがありません。",
         "canonical-link-mismatch": "メインタスクの仲間所有リンクが一致しません。",
-        "profile-update-pending": "保存済み Profile が実行中タスクより新しいため、Renew で適用してください。",
+        "profile-update-pending": "新しい設定が保存されています。次のタスクから反映されます。",
         "runtime-degraded": "現在のランタイムは設定済み機能の一部なしで起動しました。",
         "runtime-failed": "現在のランタイムを起動できませんでした。",
         "routes-recovering": "{{count}} 件の Route が復旧中です。",
@@ -6410,10 +6410,10 @@
       "events": {
         "created": "仲間を作成",
         "canonical-created": "メインタスクを作成",
-        "canonical-renewed": "メインタスクを Renew",
+        "canonical-renewed": "新しいタスクを開始",
         "canonical-linked": "メインタスクをリンク",
         "session-linked": "タスクを仲間履歴へリンク",
-        "legacy-profile-migrated": "旧仲間 Profile を移行",
+        "legacy-profile-migrated": "以前の相棒設定から引き継ぎました",
         "legacy-session-skipped": "旧タスクをリンクできませんでした",
         "project-binding-upserted": "プロジェクトの関連付けを更新",
         "workspace-lease-released": "worktree を解放",
@@ -6487,15 +6487,15 @@
     "identityTitle": "アイデンティティ",
     "identitySourceLabel": "仲間のアイデンティティ（SOUL）",
     "identitySourcePlaceholder": "この仲間の性格、役割、長期的な振る舞いを説明します。",
-    "identitySourceDescription": "仲間タスクの開始時に Profile のアイデンティティとして読み込まれ、各メッセージの前に繰り返し付加されません。",
+    "identitySourceDescription": "「その子が何者か」を書く欄です。タスクの開始時に一度渡され、メッセージごとに繰り返されることはありません。",
     "userContextSourceLabel": "ユーザープロフィール（USER）",
     "userContextSourcePlaceholder": "あなたが誰か、呼び方、長期的な好みをこの仲間に伝えます。",
-    "userContextSourceDescription": "Hermes の USER.md に相当します。仲間のアイデンティティや書き込み可能な仲間 Memory と分けてバージョン管理し、実行ごとに読み取り専用で固定します。",
+    "userContextSourceDescription": "あなたについて知っておいてほしいこと。性格や、その子が自分で覚えた内容とは分けて保存され、他の設定と一緒に固定されます。",
     "chooseAvatar": "アバター {{avatar}} を選択",
     "chooseAvatarColor": "アバターの色 {{color}} を選択",
     "advancedCapabilities": {
       "title": "これらの能力の裏側にある技術設定",
-      "description": "harness、モデル、ツール、MCP サーバー、Skill。普段の利用では触る必要はありません。"
+      "description": "どのエンジンとモデルで動くか、それに道具とスキル。普段の利用では触る必要はありません。"
     },
     "memoryRecovery": {
       "title": "この仲間の長期メモリは現在オフです",
@@ -6503,27 +6503,27 @@
       "action": "メモリをオンに戻す"
     },
     "capabilitiesTitle": "機能",
-    "capabilitiesDescription": "仲間タスクは固定された Profile バージョンからこれらの実機能を読み込みます。",
-    "capabilitiesDeferred": "機能の更新は新しい Profile バージョンを作成します。現在のタスクは明示的に Renew するまで固定されたバージョンを使い続けます。",
+    "capabilitiesDescription": "タスクが始まるとき、この子が実際に持つ能力です。",
+    "capabilitiesDeferred": "ここでの変更は次のタスクから反映されます。今のタスクは開始時の能力のまま動きます。",
     "profileApply": {
-      "title": "新しい Profile を保存しました",
-      "description": "Profile v{{currentVersion}} は保存されましたが、現在のタスクは引き続き v{{activeVersion}} を使用しています。Renew を行うと新しい Profile で主タスクを作成し、現在のタスクをアーカイブします。",
-      "keepCurrent": "現在のタスクを続ける",
-      "renewAndApply": "Renew して適用",
+      "title": "設定を保存しました",
+      "description": "新しい設定は保存済みですが、今のタスクはまだ以前の設定で動いています。新しいタスクを始めると反映され、今のタスクは履歴に移ります。",
+      "keepCurrent": "今のタスクを続ける",
+      "renewAndApply": "新しいタスクを始める",
       "saveFailed": "仲間設定を保存できませんでした。変更は適用されていません。",
-      "renewFailed": "新しい Profile は保存されましたが、新しい主タスクを作成できませんでした。現在のタスクは変更されていません。"
+      "renewFailed": "新しい設定は保存できましたが、新しいタスクを開始できませんでした。今のタスクはそのままです。"
     },
     "runtimeState": {
       "saved": "保存済み・起動後に反映",
       "prepared": "起動設定を準備済み・反映は未確認",
       "applied": "現在のタスクに反映済み",
-      "pendingRenew": "Renew 待ち",
+      "pendingRenew": "次のタスクから反映",
       "degraded": "一部の機能が利用不可",
       "failed": "前回の起動に失敗・未反映"
     },
     "modelLabel": "モデル",
     "modelUnavailable": "{{model}}（現在利用できません）",
-    "harnessLabel": "Harness",
+    "harnessLabel": "エンジン",
     "capabilityMode": {
       "inherit": "現在利用可能な機能を使用",
       "allowlist": "個別に選択"
@@ -6541,7 +6541,7 @@
     "memoryLabel": "長期メモリ",
     "memoryDescription": "この仲間専用の独立したメモリ領域を使用します。",
     "automationLabel": "自動化",
-    "automationDescription": "この仲間をスケジュールに従って無人実行します。各実行では Profile、プロジェクト、worktree、配信先が固定されます。",
+    "automationDescription": "不在のあいだ、この子に予定どおり働いてもらえます。各実行は開始時点の設定・プロジェクト・送り先で固定されます。",
     "automations": {
       "title": "仲間の自動化",
       "description": "この仲間が自分で実行する Routine。スケジュール、または「今すぐ実行」で動きます。",
@@ -6572,7 +6572,7 @@
       "retryingDelivery": "再試行中…",
       "edit": "編集",
       "saving": "保存中…",
-      "nextProfileVersion": "次回は Profile v{{version}} を使用",
+      "nextProfileVersion": "次回の実行は今保存されている設定を使います",
       "executionPolicy": "実行の上限",
       "executionPolicyDescription": "最長実行分数に達すると、その実行は中止されます。",
       "timeoutMinutes": "最大実行時間（分）",
@@ -6664,7 +6664,7 @@
     "permissionsLabel": "権限モード",
     "permissionAsk": "実行前に確認",
     "permissionTrusted": "信頼済みの操作",
-    "codexAutomaticCompact": "Codex の仲間はコンテキストを自動圧縮します。/new では現在の仲間タスクを維持し、本当に新しいタスクが必要な場合だけ仲間設定の Renew を使用します。",
+    "codexAutomaticCompact": "Codex の相棒は自分で文脈を圧縮し、/new でも今のタスクは残ります。本当に仕切り直したいときだけ新しいタスクを始めてください。",
     "chatWelcome": "{{name}} とチャット",
     "previewHint": "ローカルプレビュー — まだ実際の Agent には送信されません。",
     "chatPlaceholder": "この仲間にメッセージを送信…",
