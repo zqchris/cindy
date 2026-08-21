@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { getDraft, getPersistedVendorModel } from '@/state/newMakerDraft';
+import { getDefaultModelForVendor } from '@/lib/modelDefinitions';
 import {
   getBotLastReadAtMap,
   pruneBotReadState,
@@ -54,7 +55,8 @@ function vendorForHarness(harness: BotCapabilities['harness']): 'cc' | 'codex' |
 
 function normalizeBotModel(model: unknown, harness: BotCapabilities['harness']): string {
   if (typeof model === 'string' && model.trim()) return model.trim();
-  return getDraft().lastByVendor[vendorForHarness(harness)].model;
+  // 旧记录缺 model 时走与新建同一条口径,不另读 lastByVendor 的种子快照。
+  return defaultBotModel(vendorForHarness(harness));
 }
 
 function normalizeBotHarness(value: unknown): BotCapabilities['harness'] {
@@ -205,24 +207,27 @@ const STORAGE_KEY = 'cindy.bots.v1';
 const SQLITE_MIGRATION_KEY = 'cindy.bots.v1.sqlite-migrated';
 
 /**
- * 新建伙伴的默认模型:**只继承用户真正选过的模型**。
+ * 新建伙伴的默认模型:用户真正选过的优先,没选过就跟系统默认。
  *
- * `lastByVendor` 的整份快照会随任意 draft 写入落盘,里面的 model 即使用户从没碰过
- * 也带着对话侧的种子默认(Opus 档) —— 直接读它,新建的每个伙伴都会撞上最贵的模型,
- * 与用户自己的默认设置无关(2026-08-21 用户实测投诉)。`modelChosenByVendor` 才是
- * 「真选过」的判据,`getPersistedVendorModel` 就是按它做的读取;没选过时回落到
- * 与自动化任务同款的保守兜底 —— 伙伴同样是长期反复跑的角色,不该默认最贵档。
+ * 两条都必须走既有来源,这里不产生任何自己的模型口径:
+ *  - `lastByVendor` 的整份快照会随任意 draft 写入落盘,里面的 model 即使用户从没碰过
+ *    也带着种子默认 —— 直接读它,新建的每个伙伴都会撞上种子档,与用户自己选的无关
+ *    (2026-08-21 用户实测投诉)。`modelChosenByVendor` 才是「真选过」的判据,
+ *    `getPersistedVendorModel` 就是按它做的读取。
+ *  - 没选过时取 `getDefaultModelForVendor()`,也就是**模型选择器给新对话用的同一个
+ *    默认值**(服务端目录的 newSessionDefault)。此处曾写死一个更便宜的型号当「保守
+ *    兜底」,结果全新安装的伙伴一律显示那个写死值 —— 那是自造的第三份默认口径,
+ *    与选择器打架,已删除。要调默认档位就去改目录,不在这里分叉。
  */
-function defaultBotModel(vendor: ReturnType<typeof vendorForHarness>, seeded: string): string {
-  const chosen = getPersistedVendorModel(vendor);
-  if (chosen) return chosen;
-  return vendor === 'codex' ? 'gpt-5.5' : vendor === 'pi' ? seeded : 'claude-sonnet-4-6';
+function defaultBotModel(vendor: ReturnType<typeof vendorForHarness>): string {
+  // `||` 不是 `??`:「没选过」在 getPersistedVendorModel 里是空串,不是 null。
+  return getPersistedVendorModel(vendor) || getDefaultModelForVendor(vendor).id;
 }
 
 function defaultCapabilities(harness: BotCapabilities['harness'] = 'claude'): BotCapabilities {
   const vendor = vendorForHarness(harness);
   const prefs = getDraft().lastByVendor[vendor];
-  const model = defaultBotModel(vendor, prefs.model);
+  const model = defaultBotModel(vendor);
   return {
     model,
     // 模型没沿用 lastByVendor 时,来源也不能沿用 —— providerId 与 model 必须同源,
