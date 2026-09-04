@@ -76,7 +76,7 @@ const withoutPiApi = (model: CatalogModel): CatalogModel => {
 const xaiClaudeModels = xaiFromCatalog.models['claude-code'] ?? [];
 const xaiCodexModels = xaiFromCatalog.models.codex ?? [];
 
-/** xAI 静态清单同时供 Claude bridge、Codex 与 Pi bridge 使用。 */
+/** xAI 的 Claude/Codex 静态根；Pi 运行时目录由独立受控快照装配。 */
 const XAI_PROVIDER: Provider = {
   ...xaiFromCatalog,
   agents: xaiFromCatalog.agents.includes('pi')
@@ -92,7 +92,9 @@ const XAI_PROVIDER: Provider = {
     codex: xaiCodexModels.map(withoutPiApi),
     // providers.json 的 piApi 只属于 Pi；源文件仍与 xAI 静态根同表维护，
     // bundled 投影在这里拆开，避免协议注解污染 Claude/Codex 快照契约。
-    pi: xaiFromCatalog.models.pi ?? xaiClaudeModels,
+    // Pi has no Claude/Codex fallback. A missing Pi segment is completed by the independent
+    // pinned native snapshot in desktop active-catalog, not by copying either harness list.
+    pi: xaiFromCatalog.models.pi ?? [],
   },
 };
 

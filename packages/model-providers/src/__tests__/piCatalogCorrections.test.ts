@@ -8,6 +8,19 @@ import piCatalog from '../../catalog/pi-model-catalog.json';
 import { BUNDLED_CATALOG } from '../catalog.js';
 
 describe('Pi xAI catalog corrections', () => {
+  it('locks the complete independent snapshot to a Pi version/revision/hash and unique ids', () => {
+    expect(piCatalog.schemaVersion).toBe(1);
+    expect(piCatalog.piVersion).toBe('0.84.4');
+    expect(piCatalog.sourceRevision).toMatch(/^sha256-[0-9a-f]{64}$/);
+    expect(piCatalog.contentHash).toMatch(/^sha256-[0-9a-f]{64}$/);
+    expect(Object.keys(piCatalog.providers).length).toBeGreaterThanOrEqual(39);
+    for (const [providerId, models] of Object.entries(piCatalog.providers)) {
+      const ids = models.map((model) => model.id);
+      expect(new Set(ids).size, providerId).toBe(ids.length);
+      expect(models.every((model) => model.provider === providerId), providerId).toBe(true);
+    }
+  });
+
   it('keeps official Grok 4.6 xhigh + default high when pi.dev still ships no thinking map', () => {
     const stale = [
       {

@@ -40,6 +40,7 @@ import {
   type Provider,
   type ProviderWireProtocol,
 } from '@cindy/model-providers';
+import piModelCatalogJson from '@cindy/model-providers/pi-model-catalog' with { type: 'json' };
 
 import { CURRENT_CINDY_REGION } from '../../shared/brandRegion.js';
 import { CHATGPT_MODEL_PREFIX } from '../../shared/subscriptionModels.js';
@@ -69,6 +70,119 @@ import {
   type ModelPlaneRegistryPlan,
   type RootAgentKind,
 } from './model-plane/modelPlanePolicy.js';
+
+type PiSnapshotModel = {
+  id: string;
+  name?: string;
+  api?: string;
+  provider?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  input?: string[];
+  reasoning?: boolean;
+  thinkingLevelMap?: Record<string, string | null>;
+  cost?: CatalogModel['cost'];
+};
+
+const PI_SNAPSHOT = piModelCatalogJson as unknown as {
+  schemaVersion?: number;
+  piVersion?: string;
+  sourceRevision?: string;
+  providers: Record<string, PiSnapshotModel[]>;
+};
+
+function piEfforts(model: PiSnapshotModel): Effort[] {
+  const levels = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+  return model.reasoning === true && model.thinkingLevelMap
+    ? levels.filter((level) => model.thinkingLevelMap?.[level] != null)
+    : [];
+}
+
+function piDefaultEffort(efforts: Effort[]): Effort | null {
+  if (efforts.length === 0) return null;
+  return efforts.includes('medium')
+    ? 'medium'
+    : efforts.includes('high')
+      ? 'high'
+      : efforts[0] ?? null;
+}
+
+function piSnapshotModelToCatalogModel(
+  row: PiSnapshotModel,
+  id = row.id,
+): CatalogModel {
+  const efforts = piEfforts(row);
+  return {
+    id,
+    name: row.name ?? id,
+    contextWindow: row.contextWindow && row.contextWindow > 0 ? row.contextWindow : 128_000,
+    contextWindowVerified: true,
+    ...(row.maxTokens && row.maxTokens > 0 ? { maxOutput: row.maxTokens } : {}),
+    ...(row.input?.includes('image') ? { supportsImageInput: true } : {}),
+    efforts,
+    defaultEffort: piDefaultEffort(efforts),
+    ...(row.cost ? { cost: row.cost } : {}),
+    ...(row.api && row.api !== 'openai-codex-responses'
+      ? { piApi: row.api as PiModelApi }
+      : {}),
+  };
+}
+
+function piWireProtocolToApi(protocol: ProviderWireProtocol | undefined): PiModelApi | undefined {
+  switch (protocol) {
+    case 'anthropic-messages': return 'anthropic-messages';
+    case 'openai-responses': return 'openai-responses';
+    case 'openai-chat': return 'openai-completions';
+    default: return undefined;
+  }
+}
+
+function independentPiBaseline(providerId: string): CatalogModel[] {
+  const piProviderId = providerId === 'openai' ? 'openai-codex' : providerId;
+  return (PI_SNAPSHOT.providers[piProviderId] ?? []).map((row) =>
+    piSnapshotModelToCatalogModel(
+      row,
+      providerId === 'openai' ? `chatgpt/${row.id}` : row.id,
+    ),
+  );
+}
+
+/**
+ * Pi is a separate pinned native catalog. A Cindy Server Pi block is an optional explicit
+ * overlay; it never creates a baseline from Codex/Claude and an API conflict disables that row.
+ */
+function mergeIndependentPiModels(provider: Provider, providerId: string): CatalogModel[] {
+  const local = independentPiBaseline(providerId);
+  const byId = new Map(local.map((model) => [model.id, model]));
+  const remote = provider.models.pi;
+  if (remote === undefined) return local;
+  const localByBare = new Map(local.map((model) => [model.id.replace(/^chatgpt\//, ''), model.id]));
+  for (const candidate of remote) {
+    const normalizedId = providerId === 'openai' && !candidate.id.startsWith('chatgpt/')
+      ? `chatgpt/${candidate.id}`
+      : candidate.id;
+    const existingId = byId.has(normalizedId)
+      ? normalizedId
+      : localByBare.get(candidate.id) ?? normalizedId;
+    const localModel = byId.get(existingId);
+    const remoteApi = candidate.piApi ?? piWireProtocolToApi(candidate.route?.wireProtocol ?? provider.routing.pi?.wireProtocol);
+    // A provider-wide route is only a fallback for an exact local native row. It must not
+    // masquerade as protocol evidence for a brand-new remote Pi model.
+    const localApi = localModel?.piApi;
+    if (!localModel && !remoteApi) continue;
+    if (localApi && remoteApi && localApi !== remoteApi) {
+      byId.delete(existingId);
+      continue;
+    }
+    byId.set(existingId, {
+      ...(localModel ?? { ...candidate, id: existingId }),
+      ...candidate,
+      id: existingId,
+      ...(remoteApi ? { piApi: remoteApi } : localApi ? { piApi: localApi } : {}),
+    });
+  }
+  return [...byId.values()];
+}
 
 /** OSS / bundled 加载来的基础目录;null = 尚未加载(回落 BUNDLED_CATALOG)。 */
 let base: Catalog | null = null;
@@ -106,7 +220,7 @@ const discoveredByProvider = new Map<string, Partial<Record<AgentKind, CatalogMo
  *
  * `null` = 当前 owner 尚无成功账号快照，允许公共 Catalog / bundled 只作为启动救急；
  * `[]` = 上游明确返回空清单，仍是权威结果。成员保存为 canonical `xai/grok-*`，
- * Claude/Codex 原样消费，Pi 在投影时去掉 `xai/`。
+ * Claude/Codex 原样消费；Pi 的同 provider 原生 id 在独立目录中维护。
  */
 export interface XaiDiscoveredModel {
   id: string;
@@ -551,14 +665,12 @@ function applyMediaDiscovery(
  * defaultEnabled 等 runtime 能力。这样旧远端目录里曾固化的本地化后缀也不会继续泄漏。
  *
  * claude-code bridge 受 registry membership 门控(route.agents 不含 claude-code 的
- * 模型经 `claudeExcluded` 排除);Pi 恒定从 codex root 派生、不受门控——投影拓扑
- * 见 model-plane/modelPlanePolicy.ts。
+ * 模型经 `claudeExcluded` 排除)。Pi 不在此函数中派生，始终由独立原生目录装配。
  */
-function projectCodexModelsToBridges(
+function projectCodexModelsToClaudeBridge(
   p: Provider,
   claudeExcluded: ReadonlySet<string> = new Set(),
   prepareClaudeModel: (model: CatalogModel) => CatalogModel = (model) => model,
-  preparePiModel: (model: CatalogModel) => CatalogModel = (model) => model,
 ): Provider {
   const codex = p.models.codex ?? [];
   const canonical = new Map(codex.map((model) => [model.id, model]));
@@ -582,12 +694,7 @@ function projectCodexModelsToBridges(
     claudeSource.map((model) => toChatgptBridgeModel(prepareClaudeModel(model))),
     true,
   );
-  return augmentModels(
-    withClaude,
-    'pi',
-    codex.map((model) => toChatgptBridgeModel(preparePiModel(model))),
-    true,
-  );
+  return withClaude;
 }
 
 /** 静态段被淘汰的供应商：先清空 providers.models，再由 discovery + Registry/local root 装配。 */
@@ -838,35 +945,15 @@ function bundledXaiFallbackMembers(provider: Provider): XaiDiscoveredModel[] {
   }));
 }
 
-function projectXaiPiModel(provider: Provider, model: CatalogModel): CatalogModel {
-  const bareId = model.id.startsWith('xai/') ? model.id.slice('xai/'.length) : model.id;
-  const piMetadata = xaiCatalogModelById(provider, model.id, 'pi');
-  return {
-    ...model,
-    ...piMetadata,
-    id: bareId,
-    name: model.name,
-    description: model.description,
-    group: model.group,
-    sortOrder: model.sortOrder,
-    contextWindow: model.contextWindow,
-    ...(model.contextWindowVerified !== undefined
-      ? { contextWindowVerified: model.contextWindowVerified }
-      : {}),
-    ...(model.maxOutput !== undefined ? { maxOutput: model.maxOutput } : {}),
-    // Official Pi effort maps stay authoritative, including explicit empty lists.
-    // CC/Codex root efforts must not leak into the Pi projection.
-    status: model.status,
-    defaultEnabled: model.defaultEnabled,
-  };
-}
-
-/** 把 provider 的全部 per-agent 模型清单清零(保留身份卡);已为空则原样返回。 */
+/**
+ * 动态 discovery 供应商只清空 Codex/Claude 的旧静态清单；Pi 是独立受控快照，必须保留
+ * 作为旧服务端无 Pi 段时的本地基线，再由 mergeIndependentPiModels 叠加明确远端值。
+ */
 function withEmptyModels(p: Provider): Provider {
   const entries = Object.entries(p.models) as [AgentKind, CatalogModel[]][];
-  if (entries.every(([, list]) => list.length === 0)) return p;
+  if (entries.every(([agent, list]) => agent === 'pi' || list.length === 0)) return p;
   const models: Provider['models'] = {};
-  for (const [agent] of entries) models[agent] = [];
+  for (const [agent, list] of entries) models[agent] = agent === 'pi' ? list : [];
   return { ...p, models };
 }
 
@@ -937,38 +1024,6 @@ function computeMerged(): Catalog {
           baseUnverifiedXdMediaKinds,
         )
       : projectUnverifiedCatalogFallbackForBuildRegion(source, CURRENT_CINDY_REGION);
-  // Dynamic OpenAI/Anthropic roots are rebuilt from discovery/registry below,
-  // but the daily OSS catalog may carry sparse PI protocol annotations. Keep
-  // only that metadata and apply it after existence has been independently
-  // proven; these entries never create a selectable model by themselves.
-  const piApiByProvider = new Map<string, Map<string, NonNullable<CatalogModel['piApi']>>>();
-  for (const provider of b.providers) {
-    const annotationSources = [
-      ...(provider.models.pi ?? []),
-      ...(provider.id === 'xai' ? (provider.models['claude-code'] ?? []) : []),
-    ];
-    for (const model of annotationSources) {
-      if (!model.piApi) continue;
-      const byModel = piApiByProvider.get(provider.id) ?? new Map();
-      byModel.set(model.id, model.piApi);
-      if (provider.id === 'openai' && model.id.startsWith(CHATGPT_MODEL_PREFIX)) {
-        byModel.set(model.id.slice(CHATGPT_MODEL_PREFIX.length), model.piApi);
-      }
-      piApiByProvider.set(provider.id, byModel);
-    }
-  }
-  const applyPiApiAnnotations = (providerId: string, models: CatalogModel[]): CatalogModel[] => {
-    const annotations = piApiByProvider.get(providerId);
-    if (!annotations || annotations.size === 0) return models;
-    return models.map((model) => {
-      const rawId =
-        providerId === 'openai' && model.id.startsWith(CHATGPT_MODEL_PREFIX)
-          ? model.id.slice(CHATGPT_MODEL_PREFIX.length)
-          : model.id;
-      const piApi = annotations.get(model.id) ?? annotations.get(rawId);
-      return piApi && model.piApi !== piApi ? { ...model, piApi } : model;
-    });
-  };
   // registry 消费计划(实体化/overlay/retired/bridge 门控)一次算好;单 route 的
   // 作者错误隔离进 warnings,由刷新路径读走打日志,不拖垮其余条目。
   const plan = planRegistryRoots(b.modelRegistry);
@@ -999,8 +1054,7 @@ function computeMerged(): Catalog {
   );
   if (normalized.some((p, index) => p !== providers[index])) providers = normalized;
 
-  // 同一份规范快照先进入 Codex root;bridge/Pi 投影移到 root 装配(registry 实体化 +
-  // 本地 override)之后统一做——派生端永远从最终 root 重算,不再维护两份名单。
+  // 规范 discovery 只进入 Codex root；Claude bridge 从最终 root 重算，Pi 另读独立原生目录。
   const withCodexDiscovery = providers.map((p) =>
     p.id === 'openai' ? augmentModels(p, 'codex', discoveredCodex, true) : p,
   );
@@ -1065,43 +1119,22 @@ function computeMerged(): Catalog {
           localOverrides,
           plan.warnings,
         );
-      const preparePiModel = (model: CatalogModel): CatalogModel =>
-        applyLocalOverridesToRootModel(
-          'openai',
-          'codex',
-          applyRegistryConsumerOverlay(model, 'openai', 'pi', model.id, plan),
-          localOverrides,
-          plan.warnings,
-        );
-      const projected = projectCodexModelsToBridges(
-        withRoot,
-        excluded,
-        prepareClaudeModel,
-        preparePiModel,
-      );
+      const projected = projectCodexModelsToClaudeBridge(withRoot, excluded, prepareClaudeModel);
       const appendConsumerAdditions = (
-        agent: 'claude-code' | 'pi',
+        agent: 'claude-code',
         models: CatalogModel[],
       ): CatalogModel[] => {
         const additions = (plan.consumerAdditions.get(consumerPlanKey('openai', agent)) ?? []).map(
           (model) =>
             toChatgptBridgeModel(
-              agent === 'pi'
-                ? applyLocalOverridesToRootModel(
-                    'openai',
-                    'codex',
-                    model,
-                    localOverrides,
-                    plan.warnings,
-                  )
-                : applyLocalConsumerOverrides(
-                    'openai',
-                    'claude-code',
-                    model.id,
-                    model,
-                    localOverrides,
-                    plan.warnings,
-                  ),
+              applyLocalConsumerOverrides(
+                'openai',
+                'claude-code',
+                model.id,
+                model,
+                localOverrides,
+                plan.warnings,
+              ),
             ),
         );
         if (additions.length === 0) return models;
@@ -1116,10 +1149,9 @@ function computeMerged(): Catalog {
             'claude-code',
             projected.models['claude-code'] ?? [],
           ),
-          pi: applyPiApiAnnotations(
-            'openai',
-            appendConsumerAdditions('pi', projected.models.pi ?? []),
-          ),
+          // Pi membership is sourced from the pinned native catalog plus an explicit server Pi
+          // overlay; Codex discovery/registry changes never rewrite it.
+          pi: mergeIndependentPiModels(p, 'openai'),
         },
       };
     }
@@ -1135,7 +1167,8 @@ function computeMerged(): Catalog {
         remoteExcluded,
         localOverrides,
       );
-      // codex bridge 受 membership 门控且 fast=false(硬约束);Pi 恒定镜像 root。
+      // codex bridge 受 membership 门控且 fast=false(硬约束)。Pi is independent and is not
+      // reconstructed from the Claude root.
       const codexBridge = root
         .filter((m) => !excluded.has(m.id))
         .map((model) =>
@@ -1155,7 +1188,7 @@ function computeMerged(): Catalog {
           ...p.models,
           'claude-code': root,
           codex: codexBridge,
-          pi: applyPiApiAnnotations('anthropic', root),
+          pi: mergeIndependentPiModels(p, 'anthropic'),
         },
       };
     }
@@ -1195,14 +1228,9 @@ function computeMerged(): Catalog {
         delete rest.piApi;
         return rest;
       };
-      const piProjected = applyPiApiAnnotations(
-        'xai',
-        claudeAccountRoot.map((model) => projectXaiPiModel(p, model)),
-      );
-      // Pi 投影会写回静态 official map;非 4.6 的 discovery 显式档位/默认值仍须压过它。
-      const piModels = useAccountMembership
-        ? preserveNonGrok46DiscoveryEfforts(piProjected, accountModels)
-        : piProjected;
+      // Pi is a separately pinned native catalog. xAI account discovery only controls the
+      // Claude/Codex roots; it must not add, remove, or rename Pi models.
+      const piModels = mergeIndependentPiModels(p, 'xai');
       return {
         ...p,
         agents: p.agents.includes('pi') ? p.agents : [...p.agents, 'pi' as AgentKind],

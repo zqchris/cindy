@@ -524,14 +524,7 @@ describe('deriveAvailableModels — dynamic-first catalog contract', () => {
       'openai',
       'chatgpt/gpt-retired',
       { localOverrides },
-    )).toMatchObject({
-      id: 'chatgpt/gpt-retired',
-      displayName: 'GPT Retired',
-      contextWindow: 444_000,
-      maxOutputTokens: 96_000,
-      efforts: ['minimal', 'medium', 'high'],
-      defaultEffort: 'high',
-    });
+    )).toBeNull();
     expect(resolvePiRuntimeModelDescriptor(catalog, 'anthropic', 'chatgpt/gpt-retired')).toBeNull();
   });
 
@@ -575,12 +568,7 @@ describe('deriveAvailableModels — dynamic-first catalog contract', () => {
       'openai',
       'chatgpt/gpt-local-revival',
       { localOverrides },
-    )).toMatchObject({
-      displayName: 'Local addition',
-      contextWindow: 600_000,
-      efforts: ['minimal', 'medium', 'high'],
-      defaultEffort: 'high',
-    });
+    )).toBeNull();
   });
 
   it('retired OpenAI context profile 按 alias id 与 entry baseline 重建 Pi 私有描述符', () => {
@@ -613,14 +601,7 @@ describe('deriveAvailableModels — dynamic-first catalog contract', () => {
 
     expect(
       resolvePiRuntimeModelDescriptor(catalog, 'openai', 'chatgpt/gpt-5.6-sol[1m]'),
-    ).toMatchObject({
-      id: 'chatgpt/gpt-5.6-sol[1m]',
-      displayName: 'GPT-5.6-Sol (1M · Higher usage)',
-      contextWindow: 1_000_000,
-      maxOutputTokens: 128_000,
-      efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'],
-      defaultEffort: 'medium',
-    });
+    ).toBeNull();
   });
 
   it('runtime refresh replaces both agent model lists in place so existing sessions keep the live reference', () => {

@@ -1,6 +1,6 @@
 /**
- * active-catalog 的 discovered augment 单测 —— 验证同一份 Codex 快照同时投影原生 Codex 与
- * Claude bridge:新 id 被加入、名称/排序同源、legacy 静态 id first-wins、空/清空安全。
+ * active-catalog 的 discovered augment 单测 —— 验证 Codex/Claude discovery 只管理各自
+ * harness，Pi 始终来自独立原生目录；同时覆盖 bridge、legacy 静态 id 与空/清空安全。
  *
  * 2026-07-19 统一重构后 bundled 的 openai 是动态清单供应商(零静态模型):codex 注册表
  * 快照就是清单本身;「静态 first-wins」语义只对 legacy 远端目录(仍带静态条目的 v1
@@ -95,15 +95,15 @@ describe('active-catalog discovered augment', () => {
     setDiscoveredProviderMediaModels('xai', null);
   });
 
-  it('新 discovered id 同时进入 openai.codex 与 Claude/Pi bridge', () => {
+  it('新 discovered id 只进入 openai.codex 与 Claude bridge，不改变 Pi', () => {
     setActiveCatalog(BUNDLED_CATALOG);
     setDiscoveredCodexModels([fake('gpt-5.7')]);
     expect(openaiIds('codex')).toContain('gpt-5.7');
     expect(openaiIds('claude-code')).toContain('chatgpt/gpt-5.7');
-    expect(openaiIds('pi')).toContain('chatgpt/gpt-5.7');
+    expect(openaiIds('pi')).not.toContain('chatgpt/gpt-5.7');
   });
 
-  it('applies a daily PI protocol annotation only after OpenAI discovery proves the model exists', () => {
+  it('remote Pi overlay is explicit and is not activated by Codex discovery', () => {
     const catalog = bundledWithoutRegistry();
     const openai = catalog.providers.find((provider) => provider.id === 'openai')!;
     openai.models.pi = [
@@ -114,13 +114,38 @@ describe('active-catalog discovered augment', () => {
     ];
     setActiveCatalog(catalog);
 
-    expect(openaiIds('pi')).not.toContain('chatgpt/gpt-5.7');
+    expect(openaiIds('pi')).toContain('chatgpt/gpt-5.7');
 
     setDiscoveredCodexModels([fake('gpt-5.7')]);
     const projected = getActiveCatalog()
       .providers.find((provider) => provider.id === 'openai')
       ?.models.pi?.find((candidate) => candidate.id === 'chatgpt/gpt-5.7');
     expect(projected).toMatchObject({ piApi: 'openai-responses' });
+  });
+
+  it('remote Pi fields override the native row while omitted capability fields stay native', () => {
+    const catalog = bundledWithoutRegistry();
+    const xai = catalog.providers.find((provider) => provider.id === 'xai')!;
+    xai.models.pi = [
+      {
+        id: 'grok-4.6',
+        name: 'Server Grok 4.6',
+        contextWindow: 777_000,
+        efforts: [],
+        defaultEffort: null,
+        piApi: 'openai-responses',
+      },
+    ];
+    setActiveCatalog(catalog);
+    const model = getActiveCatalog().providers.find((provider) => provider.id === 'xai')?.models.pi?.find(
+      (candidate) => candidate.id === 'grok-4.6',
+    );
+    expect(model).toMatchObject({
+      name: 'Server Grok 4.6',
+      contextWindow: 777_000,
+      piApi: 'openai-responses',
+      supportsImageInput: true,
+    });
   });
 
   it('SuperGrok fallback keeps namespaced roots but projects bare Pi ids', () => {
@@ -150,7 +175,7 @@ describe('active-catalog discovered augment', () => {
     });
   });
 
-  it('xAI account snapshot is authoritative and projects canonical ids per harness', () => {
+  it('xAI account snapshot only changes Claude/Codex; Pi keeps its native baseline', () => {
     setActiveCatalog(BUNDLED_CATALOG);
     setXaiDiscoveredModels([{ id: 'xai/grok-4.5' }, { id: 'xai/grok-4.6' }]);
     const xai = getActiveCatalog().providers.find((provider) => provider.id === 'xai');
@@ -159,10 +184,13 @@ describe('active-catalog discovered augment', () => {
       'xai/grok-4.6',
     ]);
     expect(xai?.models.codex?.map((model) => model.id)).toEqual(['xai/grok-4.5', 'xai/grok-4.6']);
-    expect(xai?.models.pi?.map((model) => model.id)).toEqual(['grok-4.5', 'grok-4.6']);
+    expect(xai?.models.pi?.map((model) => model.id)).toEqual([
+      'grok-4.3',
+      'grok-4.5',
+      'grok-4.6',
+      'grok-build-0.1',
+    ]);
     expect(xai?.models.pi?.find((model) => model.id === 'grok-4.6')).toMatchObject({
-      contextWindow: 500_000,
-      supportsImageInput: true,
       efforts: ['low', 'medium', 'high', 'xhigh'],
       defaultEffort: 'high',
     });
@@ -200,7 +228,7 @@ describe('active-catalog discovered augment', () => {
       efforts: ['low'],
       defaultEffort: 'low',
     });
-    expect(xai?.models.pi?.find((model) => model.id === 'grok-4.5')).toMatchObject({
+    expect(xai?.models.pi?.find((model) => model.id === 'grok-4.5')).not.toMatchObject({
       efforts: ['low'],
       defaultEffort: 'low',
     });
@@ -225,7 +253,7 @@ describe('active-catalog discovered augment', () => {
     });
     expect(xai?.models.pi?.find((model) => model.id === 'grok-4.5')).toMatchObject({
       efforts: ['low', 'medium', 'high'],
-      defaultEffort: 'high',
+      defaultEffort: 'medium',
     });
   });
 
@@ -242,7 +270,6 @@ describe('active-catalog discovered augment', () => {
     });
     expect(xai?.models.pi?.find((model) => model.id === 'grok-4.5')).toMatchObject({
       efforts: ['low', 'medium', 'high'],
-      defaultEffort: 'low',
     });
     expect(xai?.models.pi?.find((model) => model.id === 'grok-4.6')).toMatchObject({
       efforts: ['low', 'medium', 'high', 'xhigh'],
@@ -250,13 +277,13 @@ describe('active-catalog discovered augment', () => {
     });
   });
 
-  it('xAI successful empty snapshot stays empty and does not leak static membership', () => {
+  it('xAI successful empty snapshot clears Claude/Codex but preserves Pi native membership', () => {
     setActiveCatalog(BUNDLED_CATALOG);
     setXaiDiscoveredModels([]);
     const xai = getActiveCatalog().providers.find((provider) => provider.id === 'xai');
     expect(xai?.models['claude-code']).toEqual([]);
     expect(xai?.models.codex).toEqual([]);
-    expect(xai?.models.pi).toEqual([]);
+    expect(xai?.models.pi?.length).toBeGreaterThan(0);
   });
 
   it('xAI 媒体发现按官方存在性收敛，静态同 id 保持 first-wins', () => {
@@ -349,7 +376,8 @@ describe('active-catalog discovered augment', () => {
     setDiscoveredCodexModels([fake('gpt-5.7', 17), fake('gpt-5.5', 20)]);
     expect(openaiIds('codex')).toEqual(['gpt-5.7', 'gpt-5.5']);
     expect(openaiIds('claude-code')).toEqual(['chatgpt/gpt-5.7', 'chatgpt/gpt-5.5']);
-    expect(openaiIds('pi')).toEqual(['chatgpt/gpt-5.7', 'chatgpt/gpt-5.5']);
+    expect(openaiIds('pi')).not.toContain('chatgpt/gpt-5.7');
+    expect(openaiIds('pi')).toContain('chatgpt/gpt-5.5');
     // 动态快照决定存在性，且明确返回的运行时能力高于 registry 基线。
     const openai = getActiveCatalog().providers.find((p) => p.id === 'openai');
     expect((openai?.models.codex ?? []).find((m) => m.id === 'gpt-5.5')?.contextWindow).toBe(
@@ -473,7 +501,8 @@ describe('anthropic 发现条目的 modelRegistry 元数据基线', () => {
         supportsFastMode: false,
       })),
     );
-    expect(anthropicList('pi')).toEqual(anthropicList('claude-code'));
+    expect(anthropicList('pi')).not.toEqual(anthropicList('claude-code'));
+    expect(anthropicList('pi').length).toBeGreaterThan(0);
     expect(
       Object.fromEntries(
         [

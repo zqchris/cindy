@@ -531,7 +531,43 @@ export function buildPiSubscriptionNativeProviders(
     stripPrefix?: string,
   ): void => {
     const source = catalog.providers.find((provider) => provider.id === sourceProviderId);
-    const models = [...(source?.models.pi ?? [])];
+    const piCatalogProviderId = sourceProviderId === 'openai' ? 'openai-codex' : sourceProviderId;
+    // Pi membership starts from the pinned native snapshot. An absent Pi segment in an older
+    // Cindy Server Catalog therefore means "no overlay", never an empty list.
+    const baseline = officialCatalogModels(piCatalogProviderId, sourceProviderId);
+    const modelsById = new Map(baseline.map((model) => [model.id, model]));
+    for (const remoteModel of source?.models.pi ?? []) {
+      const normalizedId = sourceProviderId === 'openai' && !remoteModel.id.startsWith('chatgpt/')
+        ? `chatgpt/${remoteModel.id}`
+        : sourceProviderId === 'xai' && remoteModel.id.startsWith('xai/')
+          ? remoteModel.id.slice('xai/'.length)
+          : remoteModel.id;
+      const current = modelsById.get(normalizedId);
+      const remoteApi = remoteModel.piApi ?? (remoteModel.route?.wireProtocol
+        ? wireProtocolToPiApi(remoteModel.route.wireProtocol)
+        : undefined);
+      const nativeApi = officialPiModels(piCatalogProviderId)?.find(
+        (model) => model.id === normalizedId.replace(/^chatgpt\//, ''),
+      )?.api;
+      const bundledApi = bundledModelsByProvider?.get(piCatalogProviderId)?.get(
+        normalizedId.replace(/^chatgpt\//, ''),
+      )?.api;
+      const localApi = current?.piApi
+        ?? (bundledApi && bundledApi !== 'openai-codex-responses' ? bundledApi : undefined)
+        ?? (nativeApi && nativeApi !== 'openai-codex-responses' ? nativeApi : undefined);
+      if (remoteApi && localApi && remoteApi !== localApi) {
+        // Never splice metadata from two protocols into one runnable row.
+        modelsById.delete(normalizedId);
+        continue;
+      }
+      modelsById.set(normalizedId, {
+        ...(current ?? { ...remoteModel, id: normalizedId }),
+        ...remoteModel,
+        id: normalizedId,
+        ...(remoteApi ? { piApi: remoteApi } : localApi ? { piApi: localApi } : {}),
+      });
+    }
+    const models = [...modelsById.values()];
     if (
       sourceProviderId === 'openai' &&
       retainedOpenAiModel?.id.startsWith('chatgpt/') &&
@@ -676,15 +712,17 @@ export function buildPiSubscriptionNativeProviders(
         const thinkingLevelMap =
           compatibleCapabilityCorrection?.thinkingLevelMap
           ?? compatibleOfficialThinking?.thinkingLevelMap
-          ?? (preserved?.thinkingLevelMap
-            ? { ...preserved.thinkingLevelMap }
-            : model.efforts.length > 0
+          ?? (Object.prototype.hasOwnProperty.call(model, 'efforts')
+            ? (model.efforts.length > 0
               ? Object.fromEntries(
                   PI_REASONING_EFFORTS.map((effort) => [
                     effort,
                     model.efforts.includes(effort) ? effort : null,
                   ]),
                 )
+              : undefined)
+            : preserved?.thinkingLevelMap
+              ? { ...preserved.thinkingLevelMap }
               : undefined);
         return {
           id: model.id,
@@ -706,24 +744,29 @@ export function buildPiSubscriptionNativeProviders(
               : capabilityCorrection
                 ? { api: capabilityCorrection.api }
                 : {}),
-          name: isContextProfileAddition ? model.name : (preserved?.name ?? model.name),
-          contextWindow: isContextProfileAddition
-            ? model.contextWindow
-            : (preserved?.contextWindow ?? model.contextWindow),
-          ...(preserved?.maxTokens
-            ? { maxTokens: preserved.maxTokens }
-            : model.maxOutput
-              ? { maxTokens: model.maxOutput }
+          // The merged CatalogModel already applies remote explicit Pi values over the pinned
+          // native baseline. Preserve native serializer metadata only for fields the overlay did
+          // not provide; in particular contextWindow/maxOutput must not be hidden by bundled data.
+          name: model.name ?? preserved?.name,
+          contextWindow: model.contextWindow ?? preserved?.contextWindow,
+          ...(model.maxOutput !== undefined
+            ? { maxTokens: model.maxOutput }
+            : preserved?.maxTokens
+              ? { maxTokens: preserved.maxTokens }
               : {}),
           reasoning:
             compatibleCapabilityCorrection?.reasoning
             ?? compatibleOfficialThinking?.reasoning
             ?? preserved?.reasoning
             ?? model.efforts.length > 0,
-          ...(preserved?.input
-            ? { input: [...preserved.input] }
-            : model.supportsImageInput === true
-              ? { input: ['text', 'image'] as Array<'text' | 'image'> }
+          ...(model.supportsImageInput !== undefined
+            ? {
+                input: model.supportsImageInput
+                  ? ['text', 'image'] as Array<'text' | 'image'>
+                  : ['text'] as Array<'text' | 'image'>,
+              }
+            : preserved?.input
+              ? { input: [...preserved.input] }
               : {}),
           ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
           ...(preserved?.cost
@@ -1102,6 +1145,24 @@ function officialPiModels(providerId: string): PiNativeModelSpec[] | null {
     compat: model.compat,
     samplingParams: model.samplingParams,
   }));
+}
+
+function officialCatalogModels(providerId: string, publicProviderId: string): CatalogModel[] {
+  return (officialPiModels(providerId) ?? []).map((model) => {
+    const efforts = PI_REASONING_EFFORTS.filter((effort) => model.thinkingLevelMap?.[effort] != null);
+    return {
+      id: publicProviderId === 'openai' ? `chatgpt/${model.id}` : model.id,
+      name: model.name ?? model.id,
+      contextWindow: model.contextWindow ?? 128_000,
+      contextWindowVerified: true,
+      ...(model.maxTokens ? { maxOutput: model.maxTokens } : {}),
+      ...(model.input?.includes('image') ? { supportsImageInput: true } : {}),
+      efforts: [...efforts],
+      defaultEffort: efforts.includes('medium') ? 'medium' : efforts[0] ?? null,
+      ...(model.cost ? { cost: { ...model.cost } } : {}),
+      ...(model.api !== 'openai-codex-responses' ? { piApi: model.api as PiModelApi } : {}),
+    };
+  });
 }
 
 function officialPiRouteMatches(
