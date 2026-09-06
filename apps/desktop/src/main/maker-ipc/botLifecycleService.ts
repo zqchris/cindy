@@ -16,6 +16,7 @@ import {
   botSessionLinks,
 } from '../localDb/schema.js';
 import { removeBotProfileFolder } from './botProfileFolder.js';
+import { withBotProfileLocks } from './botProfileLock.js';
 import { createLogger } from '../logger.js';
 import { assertTrustedAppRendererEvent } from '../security/trustedAppRenderer.js';
 import { requireObject, requireString, throwIpcError } from '../utils/ipcValidate.js';
@@ -58,7 +59,8 @@ function withBotLifecycleLock(
 ): Promise<BotLifecycleActionResult> {
   const current = lifecycleLocks.get(botId);
   if (current?.action === action) return current.promise;
-  const start = current ? current.promise.catch(() => undefined).then(run) : run();
+  const execute = () => withBotProfileLocks([botId], run);
+  const start = current ? current.promise.catch(() => undefined).then(execute) : execute();
   const next = start.finally(() => {
     if (lifecycleLocks.get(botId)?.promise === next) lifecycleLocks.delete(botId);
   });
@@ -269,7 +271,8 @@ export function createBotLifecycleService(deps: BotLifecycleServiceDeps) {
       throwIpcError('PRECONDITION_FAILED', 'Bot 已在永久删除流程中');
     }
     // Reject known shared history before pausing live work or archiving its canonical link.
-    // The final deletion transaction repeats this guard for references created meanwhile.
+    // The profile lock excludes concurrent shared-history writers until deletion finishes.
+    // The final transaction retains its own guard as the database safety boundary.
     await getDbClient().tx('bots.assertNoSharedHistory', { botId: request.botId });
     assertOwnerUnchanged();
     let preparationWarnings: string[] = [];

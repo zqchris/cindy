@@ -153,6 +153,7 @@ import {
   markBotProfileRuntimeFailed,
 } from '../../../maker-ipc/botProfileRuntime';
 import { createBotLifecycleService } from '../../../maker-ipc/botLifecycleService';
+import { createBotDirectMessageService } from '../../../maker-ipc/botDirectMessageService';
 import { createBotDelegationService } from '../../../maker-ipc/botDelegationService';
 import {
   BOT_DELEGATION_MAX_DISPATCH_ATTEMPTS,
@@ -308,6 +309,33 @@ function createDb(filename = ':memory:'): void {
       event_type TEXT NOT NULL,
       payload_json TEXT DEFAULT '{}' NOT NULL,
       created_at INTEGER NOT NULL
+    );
+    CREATE TABLE bot_direct_message_threads (
+      id TEXT PRIMARY KEY,
+      bot_a_id TEXT NOT NULL,
+      bot_b_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      close_reason TEXT,
+      message_count INTEGER NOT NULL DEFAULT 0,
+      max_messages INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      blocked_until INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      closed_at INTEGER
+    );
+    CREATE TABLE bot_direct_messages (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL,
+      sender_bot_id TEXT NOT NULL,
+      recipient_bot_id TEXT NOT NULL,
+      sender_session_id TEXT,
+      recipient_session_id TEXT,
+      delivery_status TEXT NOT NULL DEFAULT 'pending',
+      content TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE(thread_id, sequence)
     );
     CREATE TABLE bot_delegations (
       id TEXT PRIMARY KEY NOT NULL,
@@ -2597,6 +2625,69 @@ describe('Bot Session task end-to-end runtime', () => {
       expectedProfileVersion: 1,
     });
   }
+
+  it.each(['delete-first', 'message-first'])('serializes shared-history writes and deletion (%s)', async (order) => {
+    await seedPair();
+    const target = await invoke('local-db:bots:create-canonical-session', {
+      botId: 'bot-1', expectedCanonicalSessionId: null, expectedProfileVersion: 1,
+    });
+    const sqlite = h.sqlite!;
+    const before = sqlite.prepare("SELECT * FROM bot_profiles WHERE id = 'bot-a'").get();
+    const beforeSession = sqlite.prepare("SELECT * FROM sessions WHERE id = 'session-1'").get();
+    const beforeLink = sqlite.prepare("SELECT * FROM bot_session_links WHERE session_id = 'session-1'").get();
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const atBoundary = new Promise<void>((resolve) => { entered = resolve; });
+    const realTx = h.tx!;
+    h.tx = async (name, args) => {
+      const result = await realTx(name, args);
+      if (order === 'delete-first' && name === 'bots.assertNoSharedHistory') {
+        entered();
+        await barrier;
+      }
+      return result;
+    };
+    const ensureCanonicalSession = vi.fn(async () => ({ ok: true as const, sessionId: target.session.id }));
+    const dispatch = vi.fn(async () => {
+      if (order === 'message-first') { entered(); await barrier; }
+      return { ok: true as const, targetSessionId: target.session.id, wakeKind: 'queued' as const };
+    });
+    const direct = createBotDirectMessageService({ dispatch, ensureCanonicalSession });
+    const lifecycle = createBotLifecycleService({
+      maker: { closeSession: h.closeSession } as never,
+      getDelegationService: () => null,
+      deleteProfileAndDetachSessions: async (botId, sessionIds, keepTaskHistory) => {
+        await realTx('bots.deleteProfile', { botId, sessionIds, keepTaskHistory, at: Date.now() });
+      },
+    });
+    const remove = () => lifecycle.run({ botId: 'bot-a', action: 'delete', confirmName: '发起方伙伴', keepTaskHistory: true });
+    const send = () => direct.messageAgent({ callerSessionId: 'session-1', targetBotId: 'bot-1', message: 'Race against deletion' });
+    const first = order === 'delete-first' ? remove() : send();
+    await atBoundary;
+    const second = order === 'delete-first' ? send() : remove();
+    if (order === 'delete-first') await vi.waitFor(() => expect(ensureCanonicalSession).toHaveBeenCalled());
+    release();
+    const [firstResult, secondResult] = await Promise.allSettled([first, second]);
+    if (order === 'delete-first') {
+      expect(firstResult).toMatchObject({ status: 'fulfilled', value: { status: 'deleted' } });
+      expect(secondResult).toMatchObject({ status: 'fulfilled', value: { ok: false } });
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(sqlite.prepare('SELECT * FROM bot_direct_message_threads').all()).toEqual([]);
+      expect(sqlite.prepare('SELECT * FROM bot_direct_messages').all()).toEqual([]);
+    } else {
+      expect(firstResult).toMatchObject({ status: 'fulfilled', value: { ok: true } });
+      expect(secondResult).toMatchObject({ status: 'rejected', reason: { code: 'BOT_SHARED_HISTORY_REFERENCED' } });
+      expect(sqlite.prepare("SELECT * FROM bot_profiles WHERE id = 'bot-a'").get()).toEqual(before);
+      expect(sqlite.prepare("SELECT * FROM sessions WHERE id = 'session-1'").get()).toEqual(beforeSession);
+      expect(sqlite.prepare("SELECT * FROM bot_session_links WHERE session_id = 'session-1'").get()).toEqual(beforeLink);
+      expect(h.closeSession).not.toHaveBeenCalled();
+      expect(sqlite.prepare('SELECT * FROM bot_direct_message_threads').all()).toHaveLength(1);
+      expect(sqlite.prepare('SELECT * FROM bot_direct_messages').all()).toHaveLength(1);
+      await expect(lifecycle.run({ botId: 'bot-a', action: 'pause' })).resolves.toMatchObject({ status: 'paused' });
+      await expect(lifecycle.run({ botId: 'bot-a', action: 'resume' })).resolves.toMatchObject({ status: 'active' });
+    }
+  });
 
   it.each(['delayed', 'failed'])('revokes caller capabilities while Session close is %s', async (mode) => {
     await seedPair();

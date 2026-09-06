@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { withBotProfileLocks } from './botProfileLock.js';
 
 import { and, asc, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 
@@ -433,7 +434,20 @@ export function createBotDirectMessageService(deps: BotDirectMessageServiceDeps)
 
     const [botAId, botBId] = pairOf(caller.botId, input.targetBotId);
     const pairKey = `${botAId}\u0000${botBId}`;
-    return withPairLock(pairKey, async () => {
+    return withPairLock(pairKey, () => withBotProfileLocks([botAId, botBId], async () => {
+      if (!ownerIsCurrent()) return failed('OWNER_CHANGED', '账号已经切换，本次伙伴消息未发送');
+      // Admission above may precede a queued delete/pause. Re-read after obtaining
+      // both lifecycle locks, before creating any shared thread or message row.
+      const currentCaller = await loadCaller(input.callerSessionId);
+      if (!currentCaller || currentCaller.botId !== caller.botId || currentCaller.sessionSource !== 'bot'
+        || currentCaller.sessionStatus !== 'active' || currentCaller.botStatus !== 'active'
+        || currentCaller.role !== 'canonical' || currentCaller.linkArchivedAt !== null) {
+        return failed('BOT_SESSION_INACTIVE', '当前 Bot 主任务已暂停、归档或删除');
+      }
+      const currentTarget = await loadTargetProfile(input.targetBotId);
+      if (!currentTarget || currentTarget.status !== 'active') {
+        return failed('TARGET_BOT_INACTIVE', '目标 Bot 已暂停或归档', true);
+      }
       if (!ownerIsCurrent()) return failed('OWNER_CHANGED', '账号已经切换，本次伙伴消息未发送');
       const db = getDbClient().drizzle;
       const sentAt = now();
@@ -706,7 +720,7 @@ export function createBotDirectMessageService(deps: BotDirectMessageServiceDeps)
         remainingMessages: Math.max(0, thread.maxMessages - nextCount),
         conversationEnded: ended,
       };
-    });
+    }));
   };
 
   return { messageAgent, getThread, restore };
