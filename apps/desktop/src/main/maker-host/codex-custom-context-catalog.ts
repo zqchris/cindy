@@ -330,8 +330,11 @@ export async function prepareCodexCustomContextCatalog(params: {
     else {
       // A runtime upgrade must not silently replace an unknown model's native prompt.
       const binary = await fs.readFile(params.binaryPath);
-      const windowsPrompt = nativeFallbackPrompt.replace(/\r?\n/g, '\r\n');
-      const instructions = binary.includes(Buffer.from(nativeFallbackPrompt)) ? nativeFallbackPrompt
+      // Git checkout and native CLI builds can use different line endings.
+      // Verify both byte-exact variants regardless of this checkout's format.
+      const unixPrompt = nativeFallbackPrompt.replace(/\r\n/g, '\n');
+      const windowsPrompt = unixPrompt.replace(/\n/g, '\r\n');
+      const instructions = binary.includes(Buffer.from(unixPrompt)) ? unixPrompt
         : binary.includes(Buffer.from(windowsPrompt)) ? windowsPrompt : null;
       if (instructions === null) {
         throw new Error('Codex native fallback metadata changed; update the bundled compatibility descriptor');

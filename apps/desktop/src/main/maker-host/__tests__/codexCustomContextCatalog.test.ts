@@ -178,7 +178,7 @@ describe('Codex custom context model catalog', () => {
 
   it.each(['\n', '\r\n'] as const)('preserves verified native unknown-model behavior with %j line endings', async (lineEnding) => {
     const { root, binaryPath } = await createFixtureBinary({ models: [{ slug: 'gpt-5.4' }] }, lineEnding);
-    const instructions = nativeFallbackPrompt.replace(/\n/g, lineEnding);
+    const instructions = nativeFallbackPrompt.replace(/\r?\n/g, lineEnding);
     await fs.appendFile(binaryPath, instructions);
     const result = await prepareCodexCustomContextCatalog({ binaryPath, codexHome: root,
       modelId: 'glm-5.3', contextWindow: 500_000, scanChunkBytes: 64 });
