@@ -69,6 +69,9 @@ function createDatabase(): Database.Database {
       payload_json TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE bot_delegations (id TEXT PRIMARY KEY, requesting_bot_id TEXT, target_bot_id TEXT);
+    CREATE TABLE bot_direct_message_threads (id TEXT PRIMARY KEY, bot_a_id TEXT, bot_b_id TEXT);
+    CREATE TABLE bot_direct_messages (id TEXT PRIMARY KEY, sender_bot_id TEXT, recipient_bot_id TEXT);
     INSERT INTO bot_profiles (
       id, display_name, description, avatar, avatar_color, status,
       current_version, canonical_session_id, created_at, updated_at
@@ -248,6 +251,31 @@ describe('Bot lifecycle coordinator', () => {
     })).rejects.toThrow('完整 Bot 名称');
     expect(row(sqlite, 'bot_profiles', 'bot-1').status).toBe('active');
     expect(deleteProfileAndDetachSessions).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "INSERT INTO bot_delegations VALUES ('shared', 'other-bot', 'bot-1')",
+    "INSERT INTO bot_delegations VALUES ('shared', 'bot-1', 'other-bot')",
+    "INSERT INTO bot_direct_message_threads VALUES ('shared', 'bot-1', 'other-bot')",
+    "INSERT INTO bot_direct_messages VALUES ('shared', 'other-bot', 'bot-1')",
+  ])('preserves the active Bot and canonical task when shared history blocks deletion: %s', async (insert) => {
+    sqlite.exec(insert);
+    const beforeProfile = row(sqlite, 'bot_profiles', 'bot-1');
+    const beforeSession = row(sqlite, 'sessions', 'canonical');
+    const beforeLink = row(sqlite, 'bot_session_links', 'link-canonical');
+    await expect(service().run({
+      botId: 'bot-1', action: 'delete', confirmName: 'Helper', keepTaskHistory: true,
+    })).rejects.toMatchObject({ code: 'BOT_SHARED_HISTORY_REFERENCED' });
+    expect(row(sqlite, 'bot_profiles', 'bot-1')).toEqual(beforeProfile);
+    expect(row(sqlite, 'sessions', 'canonical')).toEqual(beforeSession);
+    expect(row(sqlite, 'bot_session_links', 'link-canonical')).toEqual(beforeLink);
+    expect(closeSession).not.toHaveBeenCalled();
+    expect(cancelDelegationsForBot).not.toHaveBeenCalled();
+    expect(deleteProfileAndDetachSessions).not.toHaveBeenCalled();
+    expect(sqlite.prepare('SELECT * FROM bot_lifecycle_events').all()).toEqual([]);
+    // Its existing runtime was never closed, and normal lifecycle controls remain usable.
+    await expect(service().run({ botId: 'bot-1', action: 'pause' })).resolves.toMatchObject({ status: 'paused' });
+    await expect(service().run({ botId: 'bot-1', action: 'resume' })).resolves.toMatchObject({ status: 'active' });
   });
 
   it('pauses, archives and detaches sessions when permanently deleting a Bot', async () => {

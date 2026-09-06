@@ -268,6 +268,10 @@ export function createBotLifecycleService(deps: BotLifecycleServiceDeps) {
     if (profile.status === 'deleting') {
       throwIpcError('PRECONDITION_FAILED', 'Bot 已在永久删除流程中');
     }
+    // Reject known shared history before pausing live work or archiving its canonical link.
+    // The final deletion transaction repeats this guard for references created meanwhile.
+    await getDbClient().tx('bots.assertNoSharedHistory', { botId: request.botId });
+    assertOwnerUnchanged();
     let preparationWarnings: string[] = [];
     if (profile.status !== 'archived') {
       const prepared = await prepareForDeletion({
