@@ -185,6 +185,7 @@ describe('botDirectMessageService', () => {
     ['a-route', 'NOT_CANONICAL_BOT_SESSION'],
     ['a-history', 'NOT_CANONICAL_BOT_SESSION'],
     ['a-archived', 'BOT_SESSION_INACTIVE'],
+    ['paused-main', 'BOT_SESSION_INACTIVE'],
     ['ordinary', 'NOT_A_BOT_SESSION'],
   ])('fails closed for caller task %s', async (callerSessionId, errorCode) => {
     const result = await createBotDirectMessageService({ dispatch }).messageAgent({

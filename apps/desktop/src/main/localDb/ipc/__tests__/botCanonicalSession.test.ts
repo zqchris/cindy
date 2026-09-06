@@ -166,7 +166,7 @@ import { readBotCollaborationMeta } from '../../../../shared/botCollaboration';
 import { UI_ACTION_TRIGGER_PREFIX } from '../../../../shared/interruptedTurn';
 import { readRemoteBotSessionAccess } from '../botRemoteSessionAccess';
 import { assertRemoteBotInvocationAllowed, projectRemoteSessionResult, projectRemoteBotPush } from '../../../device-link/remoteBotSessionBoundary';
-import { listBotSkillsForSession } from '../../../maker-ipc/botSkillService';
+import { listBotSkillsForSession, saveBotSkillForSession } from '../../../maker-ipc/botSkillService';
 import { resolveBotCanonicalSession } from '../../../maker-ipc/botCanonicalSessionRegistry';
 
 function testSha256(value: string): string {
@@ -731,30 +731,28 @@ describe('Bot canonical Session lifecycle', () => {
     }
   });
 
-  it.each([
-    { hiddenAt: 200, status: 'active' },
-    { hiddenAt: null, status: 'archived' },
-  ])('keeps $status / hidden=$hiddenAt profiles local across device-link list/get', async ({ hiddenAt, status }) => {
-    h.sqlite!.prepare('UPDATE bot_profiles SET hidden_at = ?, status = ? WHERE id = ?')
-      .run(hiddenAt, status, 'bot-1');
+  it.each(['hidden', 'archived'])('rejects a discovered Bot ID after becoming %s while preserving local recovery', async (state) => {
     const remoteList = () => runDeviceLinkInvokeContext(
       { controllerDeviceId: 'remote-mac', channel: 'local-db:bots:list' },
       () => invoke('local-db:bots:list', undefined),
     );
-    const remoteGet = () => runDeviceLinkInvokeContext(
+    const remoteGet = (id: string) => runDeviceLinkInvokeContext(
       { controllerDeviceId: 'remote-mac', channel: 'local-db:bots:get' },
-      () => invoke('local-db:bots:get', 'bot-1'),
+      () => invoke('local-db:bots:get', id),
     );
+    const [discovered] = await remoteList() as Array<{ id: string }>;
+    await expect(remoteGet(discovered.id)).resolves.toMatchObject({ id: discovered.id });
+    if (state === 'hidden') h.sqlite!.prepare('UPDATE bot_profiles SET hidden_at = ? WHERE id = ?').run(200, discovered.id);
+    else h.sqlite!.prepare("UPDATE bot_profiles SET status = 'archived' WHERE id = ?").run(discovered.id);
     await expect(remoteList()).resolves.toEqual([]);
-    await expect(remoteGet()).rejects.toMatchObject({ code: 'NOT_FOUND' });
-    await expect(invoke('local-db:bots:get', 'bot-1')).resolves.toMatchObject({ id: 'bot-1' });
+    await expect(remoteGet(discovered.id)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(invoke('local-db:bots:get', discovered.id)).resolves.toMatchObject({ id: discovered.id });
     expect(await invoke('local-db:bots:list', undefined)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'bot-1' }),
+      expect.objectContaining({ id: discovered.id }),
     ]));
-    h.sqlite!.prepare("UPDATE bot_profiles SET hidden_at = NULL, status = 'active' WHERE id = ?")
-      .run('bot-1');
-    await expect(remoteGet()).resolves.toMatchObject({ id: 'bot-1' });
-    expect(await remoteList()).toEqual([expect.objectContaining({ id: 'bot-1' })]);
+    h.sqlite!.prepare("UPDATE bot_profiles SET hidden_at = NULL, status = 'active' WHERE id = ?").run(discovered.id);
+    await expect(remoteGet(discovered.id)).resolves.toMatchObject({ id: discovered.id });
+    expect(await remoteList()).toEqual([expect.objectContaining({ id: discovered.id })]);
   });
 
   it('freezes provider, model, effort, and Fast Mode into the canonical Session', async () => {
@@ -2717,6 +2715,7 @@ describe('Bot Session task end-to-end runtime', () => {
       await vi.waitFor(() => expect(closeSession).toHaveBeenCalled());
       expect(await runtime.delegation.startSessionTask({ callerSessionId: 'session-1', objective: 'Must not start while closing' })).toMatchObject({ ok: false });
       expect(await listBotSkillsForSession({ callerSessionId: 'session-1' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
+      expect(await saveBotSkillForSession({ callerSessionId: 'session-1', name: 'Blocked skill', description: 'Must not be saved', body: 'No file should be written.' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
       if (mode === 'failed') fail(new Error('runtime did not close')); else finish();
       const result = await pausing;
       expect(result.status).toBe('paused');
@@ -2736,6 +2735,7 @@ describe('Bot Session task end-to-end runtime', () => {
       expect(result.ok).toBe(false);
       expect(runtime.started).toHaveLength(0);
       expect(await listBotSkillsForSession({ callerSessionId: 'session-1' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
+      expect(await saveBotSkillForSession({ callerSessionId: 'session-1', name: 'Blocked skill', description: 'Must not be saved', body: 'No file should be written.' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
     } finally { runtime.delegation.dispose(); }
   });
 
