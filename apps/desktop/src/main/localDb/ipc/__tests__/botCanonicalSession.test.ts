@@ -653,7 +653,34 @@ describe('Bot canonical Session lifecycle', () => {
       expect(projection).not.toHaveProperty('identitySource');
       expect(projection).not.toHaveProperty('userContextSource');
       expect(projection).not.toHaveProperty('capabilities');
+      expect(projection).not.toHaveProperty('hiddenAt');
     }
+  });
+
+  it.each([
+    { hiddenAt: 200, status: 'active' },
+    { hiddenAt: null, status: 'archived' },
+  ])('keeps $status / hidden=$hiddenAt profiles local across device-link list/get', async ({ hiddenAt, status }) => {
+    h.sqlite!.prepare('UPDATE bot_profiles SET hidden_at = ?, status = ? WHERE id = ?')
+      .run(hiddenAt, status, 'bot-1');
+    const remoteList = () => runDeviceLinkInvokeContext(
+      { controllerDeviceId: 'remote-mac', channel: 'local-db:bots:list' },
+      () => invoke('local-db:bots:list', undefined),
+    );
+    const remoteGet = () => runDeviceLinkInvokeContext(
+      { controllerDeviceId: 'remote-mac', channel: 'local-db:bots:get' },
+      () => invoke('local-db:bots:get', 'bot-1'),
+    );
+    await expect(remoteList()).resolves.toEqual([]);
+    await expect(remoteGet()).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    await expect(invoke('local-db:bots:get', 'bot-1')).resolves.toMatchObject({ id: 'bot-1' });
+    expect(await invoke('local-db:bots:list', undefined)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'bot-1' }),
+    ]));
+    h.sqlite!.prepare("UPDATE bot_profiles SET hidden_at = NULL, status = 'active' WHERE id = ?")
+      .run('bot-1');
+    await expect(remoteGet()).resolves.toMatchObject({ id: 'bot-1' });
+    expect(await remoteList()).toEqual([expect.objectContaining({ id: 'bot-1' })]);
   });
 
   it('freezes provider, model, effort, and Fast Mode into the canonical Session', async () => {

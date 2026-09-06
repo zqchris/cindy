@@ -196,7 +196,8 @@ export interface BotDelegationView {
   /** 只在 waiting 时非空。 */
   pendingInteraction: BotDelegationPendingInteraction | null;
   resultSummary: string | null;
-  artifacts: BotDelegationArtifact[];
+  /** Remote task cards omit host-only absolute paths. Local artifacts retain them. */
+  artifacts: Array<Omit<BotDelegationArtifact, 'absolutePath'> & { absolutePath?: string }>;
   lastError: string | null;
   createdAt: number;
   acceptedAt: number | null;

@@ -39,6 +39,10 @@ it('rejects a previously discovered hidden companion and allows it again after r
   expect(db.get).toHaveBeenLastCalledWith('bot-1');
 
   source.hiddenAt = null;
+  source.status = 'archived';
+  expect((await list()).items).toEqual([]);
+  await expect(get()).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  source.status = 'active';
   expect((await list()).items).toHaveLength(1);
   await expect(get()).resolves.toMatchObject({ display: { title: 'Sora' } });
 });

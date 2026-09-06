@@ -218,7 +218,7 @@ function SessionTaskCardBody({
       {artifacts.length > 0 ? (
         <ul className="mt-2 space-y-1 text-11 text-[var(--text-tertiary)]">
           {artifacts.map((artifact) => (
-            <li key={`${artifact.status}:${artifact.absolutePath}`} className="truncate">
+            <li key={`${artifact.status}:${artifact.path}`} className="truncate">
               {artifact.path}
             </li>
           ))}

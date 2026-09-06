@@ -27,6 +27,7 @@ import {
 import { assertTrustedAppRendererEvent } from '../../security/trustedAppRenderer.js';
 import { isDeviceLinkInvoke } from '../../device-link/invoke-context.js';
 import { requireString, throwIpcError } from '../../utils/ipcValidate.js';
+import { isBotVisibleRemotely } from './botRemoteVisibility.js';
 import { resolveBusinessSessionId } from '../../sessionIds.js';
 import { ensureProjectGitInitialized } from '../../git-snapshot/projectGitBootstrap.js';
 import { readGitSafetySettings } from '../../maker-host/git-safety-settings-store.js';
@@ -665,15 +666,18 @@ async function readRemoteBotProfile(client: ReturnType<typeof getDbClient>, botI
       status: botProfiles.status,
       currentVersion: botProfiles.currentVersion,
       canonicalSessionId: botProfiles.canonicalSessionId,
+      hiddenAt: botProfiles.hiddenAt,
     })
     .from(botProfiles)
     .where(eq(botProfiles.id, botId))
     .limit(1);
   if (!profile) throwIpcError('NOT_FOUND', 'Bot 不存在');
+  if (!isBotVisibleRemotely(profile)) return null;
   const canonicalResolution = await reconcileCanonicalLink(botId, client);
   owner.assertCurrent();
+  const { hiddenAt: _hiddenAt, ...visibleProfile } = profile;
   return {
-    ...profile,
+    ...visibleProfile,
     canonicalSessionId: canonicalResolution.canonicalSessionId ?? undefined,
   };
 }
@@ -1097,13 +1101,14 @@ export function registerBotIpc(): void {
           .map(({ id }) => recoverBotTemplateSkills(id)),
       );
     }
-    return Promise.all(
+    const results = await Promise.all(
       profiles.map(({ id }) =>
         remote
           ? readRemoteBotProfile(client, id)
           : readProfile(client, id, lastReadAtByBotId.get(id) ?? null),
       ),
     );
+    return results.filter((profile) => profile !== null);
   });
 
   ipcMain.handle('local-db:bots:get', async (event, rawId: unknown) => {
@@ -1112,7 +1117,10 @@ export function registerBotIpc(): void {
     const client = getDbClient();
     const botId = requireString(rawId, 'botId');
     if (!remote) await recoverBotTemplateSkills(botId);
-    return remote ? readRemoteBotProfile(client, botId) : readProfile(client, botId);
+    if (!remote) return readProfile(client, botId);
+    const profile = await readRemoteBotProfile(client, botId);
+    if (!profile) throwIpcError('NOT_FOUND', 'Bot 不存在');
+    return profile;
   });
 
   ipcMain.handle('local-db:bots:choose-avatar', async (event, raw: unknown) => {

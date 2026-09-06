@@ -15,6 +15,6 @@ export function projectRemoteBotDelegations(result: BotDelegationListResult): Bo
       requestId: row.pendingInteraction.requestId, kind: row.pendingInteraction.kind,
       summary: row.pendingInteraction.summary, raisedAt: row.pendingInteraction.raisedAt,
     } : null,
-    artifacts: row.artifacts.map(({ path, absolutePath, status }) => ({ path, absolutePath, status })),
+    artifacts: row.artifacts.map(({ path, status }) => ({ path, status })),
   })) };
 }
