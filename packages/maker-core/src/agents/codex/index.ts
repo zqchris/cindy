@@ -9470,8 +9470,26 @@ export class CodexAgent extends BaseAgent {
       // A compact endpoint can exhaust its own retries while ordinary generation works.
       // Try the same model/account summary once; explicit exhausted quota stays terminal.
       const compactRateLimit = isTerminalRateLimitRetryExhaustion(text, signals.errorStatus, error?.codexErrorInfo);
-      return !isAuthRelatedErrorMessage(text)
-        && ((!signals.usageLimit && signals.errorStatus !== 429) || compactRateLimit)
+      const tag = codexErrorInfoTag(error?.codexErrorInfo);
+      if (tag === 'usageLimitExceeded' || tag === 'sessionBudgetExceeded' || tag === 'unauthorized') return false;
+      // A terminal turn alone does not prove an upstream compact request failed:
+      // transport loss/timeouts can leave its result unknown. Accept explicit
+      // endpoint rejection/failure responses (including the observed 502/503),
+      // plus the existing exhausted-429 case; never infer success from exclusions.
+      const info = error?.codexErrorInfo;
+      // The shared redaction helper deliberately extracts only auth/rate-limit
+      // statuses. Parse Codex's explicit HTTP failure wording locally as well.
+      const statusMatch = /\b(?:HTTP(?:\/\d(?:\.\d)?)?(?:\s+status)?|(?:unexpected|last)\s+status(?:\s+code)?)\s*:?\s*(\d{3})\b/i.exec(text);
+      const textStatus = statusMatch ? Number(statusMatch[1]) : signals.errorStatus;
+      const httpStatus = info && typeof info === 'object' && 'httpConnectionFailed' in info
+        ? info.httpConnectionFailed.httpStatusCode ?? textStatus
+        : textStatus;
+      const rejectedRequest = [400, 404, 405, 422, 500, 501, 502, 503].includes(httpStatus ?? 0);
+      const uncertainTransport = tag === 'responseStreamDisconnected' || tag === 'responseStreamConnectionFailed'
+        || /timeout|timed out|ECONNRESET|ECONNREFUSED|ENOTFOUND|connection reset|network error|stream disconnected/i.test(text);
+      return !uncertainTransport
+        && !isAuthRelatedErrorMessage(text)
+        && ((rejectedRequest && !signals.usageLimit) || compactRateLimit)
         && !isRemoteCompactEncryptedContentError(text);
     };
 

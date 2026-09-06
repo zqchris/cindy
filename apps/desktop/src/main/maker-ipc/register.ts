@@ -785,7 +785,7 @@ import { resolveVerifiedContextWindow, resolveModelDefaultContextWindow } from '
 import {
   isModelContextLimitCustomized,
   readModelContextLimit,
-  writeModelContextLimits,
+  writeModelContextLimitsWithRefresh,
 } from '../maker-host/model-context-limit-store.js';
 import { refreshXaiMediaModels } from '../maker-host/model-discovery/xai-media.js';
 import { testProviderConnection } from '../maker-host/provider-diagnostics.js';
@@ -5356,27 +5356,29 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
     },
     writeModelContextLimit: async (targets, limit) => {
       const owner = getActiveAppSession();
-      writeModelContextLimits(targets, limit);
-      for (const active of maker.listActiveSessions()) {
+      await writeModelContextLimitsWithRefresh(targets, limit, async () => {
+        for (const active of maker.listActiveSessions()) {
+          if (getActiveAppSession().generation !== owner.generation) throw new Error('Account changed during context configuration');
+          const session = maker.getSession(active.id);
+          if (!session || session.agentKind !== 'codex' || session.remoteHostId) continue;
+          const source = getSessionProvider(active.id) ?? inferProviderIdForModel(session.model, 'codex');
+          if (!targets.some((t) => t.agent === 'codex' && t.providerId === source && t.modelId === session.model)) continue;
+          // An already pending model/provider switch will rebuild with the latest settings.
+          // Never replace that user intention with a same-model settings refresh.
+          if (getPendingCredentialSwitchTarget(active.id)) continue;
+          await applyRuntimeSetModelChange({
+            maker, sessionId: active.id, model: session.model,
+            providerId: getSessionProvider(active.id), forceSessionRebuild: true,
+            isSessionInTurn,
+            registerPendingCredentialSwitch: registerPendingCredentialSwitchForSession,
+            clearPendingCredentialSwitch: clearPendingCredentialSwitchForSession,
+            wakeSessionInputQueue: wakeSessionInputAfterCredentialSwitch,
+            getPendingCredentialSwitch: getPendingCredentialSwitchTarget,
+            codexAuthInjection: getCodexProxyAuthInjectionState(), logger: log,
+          });
+        }
         if (getActiveAppSession().generation !== owner.generation) throw new Error('Account changed during context configuration');
-        const session = maker.getSession(active.id);
-        if (!session || session.agentKind !== 'codex' || session.remoteHostId) continue;
-        const source = getSessionProvider(active.id) ?? inferProviderIdForModel(session.model, 'codex');
-        if (!targets.some((t) => t.agent === 'codex' && t.providerId === source && t.modelId === session.model)) continue;
-        // An already pending model/provider switch will rebuild with the latest settings.
-        // Never replace that user intention with a same-model settings refresh.
-        if (getPendingCredentialSwitchTarget(active.id)) continue;
-        await applyRuntimeSetModelChange({
-          maker, sessionId: active.id, model: session.model,
-          providerId: getSessionProvider(active.id), forceSessionRebuild: true,
-          isSessionInTurn,
-          registerPendingCredentialSwitch: registerPendingCredentialSwitchForSession,
-          clearPendingCredentialSwitch: clearPendingCredentialSwitchForSession,
-          wakeSessionInputQueue: wakeSessionInputAfterCredentialSwitch,
-          getPendingCredentialSwitch: getPendingCredentialSwitchTarget,
-          codexAuthInjection: getCodexProxyAuthInjectionState(), logger: log,
-        });
-      }
+      });
     },
     // 通用 OAuth（目录 auth.oauth 描述符驱动）：login 成功后 best-effort 拉动态模型发现
     // (additions-only merge 进 active-catalog) 并广播 PROVIDER_CHANGED 让 UI 刷新连接态。

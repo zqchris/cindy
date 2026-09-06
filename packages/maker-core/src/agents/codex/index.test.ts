@@ -8705,6 +8705,27 @@ describe('CodexAgent MCP thread context hooks', () => {
       expect(host.request.mock.calls.filter(([m]) => m === Method.ThreadFork)).toHaveLength(0);
       await handle.close();
     });
+    it.each([
+      'request timed out', 'network error: connection lost',
+      'upstream unavailable', 'stream disconnected before completion',
+      'unexpected status 408 Request Timeout', 'unexpected status 504 Gateway Timeout',
+      'unexpected status 502: connection reset by peer',
+    ])('does not fork an uncertain compact failure: %s', async (message) => {
+      const { host, handle } = await start();
+      compact(host);
+      fail(host, 'turn-1', { message, codexErrorInfo: 'other' });
+      await waitForExpectation(() => expect(handle.isTurnRunning?.()).toBe(false));
+      expect(host.request.mock.calls.filter(([m]) => m === Method.ThreadFork)).toHaveLength(0);
+      await handle.close();
+    });
+    it.each([502, 503])('recovers explicit compact HTTP %s after the native turn has failed', async (status) => {
+      const { host, handle } = await start();
+      compact(host);
+      fail(host, 'turn-1', { message: `unexpected status ${status}`, codexErrorInfo: 'other' });
+      await waitForExpectation(() => expect(handle.getCurrentTurnId?.()).toBe('turn-2'));
+      expect(host.request.mock.calls.filter(([m]) => m === Method.ThreadFork)).toHaveLength(1);
+      await handle.close();
+    });
     it('keeps the active native window when settings change during compaction', async () => {
       let limit = 1_000_000;
       const { agent, host } = setup('cindy_codex', () => limit);
