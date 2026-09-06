@@ -11516,6 +11516,7 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
           source: sessions.source,
           role: botSessionLinks.role,
           profileStatus: botProfiles.status,
+          hiddenAt: botProfiles.hiddenAt,
         })
         .from(sessions)
         .leftJoin(botSessionLinks, eq(botSessionLinks.sessionId, sessions.id))
@@ -11523,6 +11524,9 @@ export function registerMakerIpc(maker: Maker, options: RegisterMakerIpcOptions)
         .where(eq(sessions.id, sessionId))
         .limit(1);
       const blocked = botSessionInputBlockReason(botInput ?? null);
+      if (isDeviceLinkInvoke() && botInput?.source === 'bot' && (botInput.hiddenAt || botInput.profileStatus === 'archived')) {
+        throwIpcError('NOT_FOUND', 'Session does not exist');
+      }
       if (blocked) throwIpcError('PRECONDITION_FAILED', blocked);
       return sendToAgentAcceptedUnlocked(...args);
     });

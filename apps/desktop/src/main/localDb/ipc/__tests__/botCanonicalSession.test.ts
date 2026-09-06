@@ -1,11 +1,10 @@
 import Database from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOT_TEMPLATE_PRESET_IDENTITIES } from '../../../../shared/botTemplatePreset';
 
 import {
@@ -19,7 +18,13 @@ import {
   sessions,
 } from '../../schema';
 
-const h = vi.hoisted(() => ({
+const h = await vi.hoisted(async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const userDataDir = mkdtempSync(join(tmpdir(), 'cindy-bot-test-'));
+  return ({
+  userDataDir,
   db: null as ReturnType<typeof drizzle> | null,
   sqlite: null as Database.Database | null,
   tx: null as null | ((name: string, args: unknown) => Promise<unknown>),
@@ -45,18 +50,19 @@ const h = vi.hoisted(() => ({
     capabilities?: { manualCompact?: { supported?: boolean } };
     compactSession: (instructions?: string) => Promise<unknown>;
   } | null),
-  ensureDialogue: vi.fn((sessionId: string) => `/tmp/cindy-bot-test/${sessionId}`),
+  ensureDialogue: vi.fn((sessionId: string) => join(userDataDir, sessionId)),
   searchConversations: vi.fn(),
   requestRuntimeRefresh: vi.fn(),
   seedTemplateSkills: vi.fn(async () => ({ completedNow: true, skills: [] })),
   ownerScopeKey: 'owner-a:1',
   ownerBoundaryPending: false,
-}));
+});
+});
 
 vi.mock('node:fs/promises', () => ({ default: { rm: h.remove } }));
 vi.mock('electron', () => ({
   app: {
-    getPath: vi.fn(() => '/tmp/cindy-bot-test'),
+    getPath: vi.fn(() => h.userDataDir),
   },
   ipcMain: {
     handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
@@ -128,7 +134,7 @@ vi.mock('../../../appSessionState.js', async (importOriginal) => {
     ...actual,
     activeOwnerScopeKey: () => h.ownerScopeKey,
     isAppSessionBoundaryPending: () => h.ownerBoundaryPending,
-    ownerScopedUserDataPath: () => `/tmp/cindy-bot-test/${h.ownerScopeKey}`,
+    ownerScopedUserDataPath: () => join(h.userDataDir, createHash('sha256').update(h.ownerScopeKey).digest('hex')),
   };
 });
 
@@ -156,6 +162,9 @@ import type { MakerSessionCreateOpts } from '../../../maker-ipc/sessionRequest';
 import { parseBotDelegationPlanSnapshot } from '../../../../shared/botDelegation';
 import { readBotCollaborationMeta } from '../../../../shared/botCollaboration';
 import { UI_ACTION_TRIGGER_PREFIX } from '../../../../shared/interruptedTurn';
+import { readRemoteBotSessionAccess } from '../botRemoteSessionAccess';
+import { assertRemoteBotInvocationAllowed, projectRemoteSessionResult, projectRemoteBotPush } from '../../../device-link/remoteBotSessionBoundary';
+import { listBotSkillsForSession } from '../../../maker-ipc/botSkillService';
 import { resolveBotCanonicalSession } from '../../../maker-ipc/botCanonicalSessionRegistry';
 
 function testSha256(value: string): string {
@@ -384,6 +393,42 @@ beforeEach(async () => {
 });
 
 describe('Bot canonical Session lifecycle', () => {
+
+  it.each(['../bot', 'Bot', 'a:b', 'con', 'aux', 'lpt1'])('rejects nonportable new companion ID %s before persistence', async (id) => {
+    await expect(invoke('local-db:bots:create', { id, name: 'Unsafe ID' })).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
+    expect(h.sqlite!.prepare('SELECT COUNT(*) AS count FROM bot_profiles').get()).toEqual({ count: 1 });
+  });
+
+  it('rejects a new ID whose home aliases a legacy profile', async () => {
+    h.sqlite!.pragma('foreign_keys = OFF');
+    h.sqlite!.prepare("UPDATE bot_profiles SET id = 'Bot-1' WHERE id = 'bot-1'").run();
+    await expect(invoke('local-db:bots:create', { id: 'bot-1', name: 'Alias' })).rejects.toMatchObject({ code: 'ALREADY_EXISTS' });
+    h.sqlite!.pragma('foreign_keys = ON');
+  });
+
+  it.each(['hidden', 'archived'])('enforces %s companion visibility for cached task IDs, lists and pushes while retaining local access', async (state) => {
+    const created = await invoke('local-db:bots:create-canonical-session', {
+      botId: 'bot-1', expectedCanonicalSessionId: null, expectedProfileVersion: 1,
+    });
+    const id = created.session.id;
+    expect(await readRemoteBotSessionAccess(id)).toBe('visible');
+    await expect(assertRemoteBotInvocationAllowed([id])).resolves.toBeUndefined();
+    expect(await projectRemoteSessionResult('local-db:sessions:get', created.session)).toEqual(created.session);
+    if (state === 'hidden') h.sqlite!.prepare("UPDATE bot_profiles SET hidden_at = 1 WHERE id = 'bot-1'").run();
+    else h.sqlite!.prepare("UPDATE bot_profiles SET status = 'archived' WHERE id = 'bot-1'").run();
+    expect(await readRemoteBotSessionAccess(id)).toBe('hidden');
+    await expect(assertRemoteBotInvocationAllowed([id])).rejects.toThrow('[NOT_FOUND]');
+    await expect(assertRemoteBotInvocationAllowed([{ sessionId: id }])).rejects.toThrow('[NOT_FOUND]');
+    expect(await projectRemoteSessionResult('local-db:sessions:list', [created.session])).toEqual([]);
+    expect(await projectRemoteSessionResult('maker:list-active', [{ sessionId: id }])).toEqual([]);
+    expect(await projectRemoteBotPush({ sessionId: id, content: 'private reply' })).toBeNull();
+    expect(await projectRemoteBotPush(created.session, 'local-db:sessions:created')).toBeNull();
+    await expect(assertRemoteBotInvocationAllowed(['bot-1'], 'local-db:bots:get')).rejects.toThrow('[NOT_FOUND]');
+    const cachedResource = { ref: { id: 'bot-1', kind: 'bot' }, revision: id, display: { title: 'private name' } };
+    await expect(projectRemoteSessionResult('maker:remote-resources:get', cachedResource)).rejects.toThrow('[NOT_FOUND]');
+    expect(await projectRemoteSessionResult('maker:remote-resources:list', { items: [cachedResource], revision: id })).toEqual({ items: [], revision: '' });
+    expect(await invoke('local-db:bots:get', 'bot-1')).toMatchObject({ id: 'bot-1' });
+  });
 
   it('projects canonical remote identity without exposing profile instructions or runtime snapshots', async () => {
     const created = await invoke('local-db:bots:create', {
@@ -1674,7 +1719,7 @@ describe('Bot canonical Session lifecycle', () => {
     const initialSnapshot = await hydrateBotProfileRuntime({
       id: 'session-1',
       agentKind: 'pi',
-      workingDir: '/tmp/cindy-bot-test/session-1',
+      workingDir: join(h.userDataDir, 'session-1'),
       workspaceKind: 'dialogue',
       model: 'grok-4.5',
       permissionMode: 'bypassPermissions',
@@ -1688,7 +1733,7 @@ describe('Bot canonical Session lifecycle', () => {
     const resumedOpts: MakerSessionCreateOpts = {
       id: 'session-1',
       agentKind: 'pi' as const,
-      workingDir: '/tmp/cindy-bot-test/session-1',
+      workingDir: join(h.userDataDir, 'session-1'),
       workspaceKind: 'dialogue' as const,
       model: 'grok-4.5',
       permissionMode: 'bypassPermissions' as const,
@@ -2568,6 +2613,19 @@ describe('Bot Session task end-to-end runtime', () => {
     });
   }
 
+  it.each(['paused', 'archived-link'])('blocks new work and Skill access from a still-running %s caller', async (state) => {
+    await seedPair();
+    if (state === 'paused') h.sqlite!.prepare("UPDATE bot_profiles SET status = 'paused' WHERE id = 'bot-a'").run();
+    else h.sqlite!.prepare("UPDATE bot_session_links SET archived_at = 1 WHERE session_id = 'session-1'").run();
+    const runtime = createDelegationRuntime();
+    try {
+      const result = await runtime.delegation.startSessionTask({ callerSessionId: 'session-1', objective: 'Must not run' });
+      expect(result.ok).toBe(false);
+      expect(runtime.started).toHaveLength(0);
+      expect(await listBotSkillsForSession({ callerSessionId: 'session-1' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
+    } finally { runtime.delegation.dispose(); }
+  });
+
   it.each(['cc', 'codex'])('starts a child on the actual %s route after its Bot changes engines', async (agentKind) => {
     await seedPair();
     const runtime = createDelegationRuntime({
@@ -3356,4 +3414,9 @@ describe('Bot Session task end-to-end runtime', () => {
       runtime.dispose();
     }
   });
+});
+
+afterAll(() => {
+  h.sqlite?.close();
+  rmSync(h.userDataDir, { recursive: true, force: true });
 });

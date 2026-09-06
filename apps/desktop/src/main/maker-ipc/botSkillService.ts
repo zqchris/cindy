@@ -25,7 +25,7 @@ import type {
   BotSkillSummary as SharedBotSkillSummary,
 } from '../../shared/botSkill.js';
 import { getDbClient } from '../localDb/client/current.js';
-import { botSessionLinks, sessions } from '../localDb/schema.js';
+import { botProfiles, botSessionLinks, sessions } from '../localDb/schema.js';
 import {
   activeOwnerScopeKey,
   isAppSessionBoundaryPending,
@@ -124,15 +124,18 @@ async function defaultResolveBotId(callerSessionId: string): Promise<
       botId: botSessionLinks.botId,
       role: botSessionLinks.role,
       sessionStatus: sessions.status,
+      profileStatus: botProfiles.status,
+      linkArchivedAt: botSessionLinks.archivedAt,
     })
     .from(botSessionLinks)
     .innerJoin(sessions, eq(sessions.id, botSessionLinks.sessionId))
+    .innerJoin(botProfiles, eq(botProfiles.id, botSessionLinks.botId))
     .where(and(eq(botSessionLinks.sessionId, callerSessionId), eq(sessions.source, 'bot')))
     .limit(1);
   if (!row) {
     return { ok: false, errorCode: 'NOT_A_BOT_SESSION', message: '当前任务不属于任何伙伴' };
   }
-  if (row.sessionStatus !== 'active') {
+  if (row.sessionStatus !== 'active' || row.profileStatus !== 'active' || row.linkArchivedAt !== null) {
     return { ok: false, errorCode: 'BOT_SESSION_INACTIVE', message: '已归档的 Bot 任务不能沉淀技能' };
   }
   if (row.role !== 'canonical' && row.role !== 'delegation') {

@@ -28,6 +28,8 @@ import { assertTrustedAppRendererEvent } from '../../security/trustedAppRenderer
 import { isDeviceLinkInvoke } from '../../device-link/invoke-context.js';
 import { requireString, throwIpcError } from '../../utils/ipcValidate.js';
 import { isBotVisibleRemotely } from './botRemoteVisibility.js';
+import { readRemoteBotSessionAccess } from './botRemoteSessionAccess.js';
+import { setRemoteBotSessionLookup } from '../../device-link/remoteBotSessionBoundary.js';
 import { resolveBusinessSessionId } from '../../sessionIds.js';
 import { ensureProjectGitInitialized } from '../../git-snapshot/projectGitBootstrap.js';
 import { readGitSafetySettings } from '../../maker-host/git-safety-settings-store.js';
@@ -931,6 +933,11 @@ export async function createBotProfile(raw: unknown) {
   const description = readText(body.description, 'description');
   const id =
     readText(body.id, 'id', 128) || `bot_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  // New identities must map one-to-one to portable directory names. Keep the
+  // legacy directory resolver unchanged so existing profiles still open.
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(id) || /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/.test(id)) {
+    throwIpcError('INVALID_PARAMS', 'Bot id must be a lowercase portable directory identifier');
+  }
   const requestedAvatar = readBotAvatar(body.avatar) || '🤖';
   // Managed addresses must come from validated image bytes ingested below,
   // never from a renderer or model supplying a URL string alone.
@@ -988,6 +995,12 @@ export async function createBotProfile(raw: unknown) {
   const client = getDbClient();
   const db = client.drizzle;
   let botAvatarRef: { id: string; hash: string; createdAt: number } | undefined;
+  const existingIds = await db.select({ id: botProfiles.id }).from(botProfiles);
+  assertCreationOwnerStillCurrent();
+  const newHome = botProfileDir(creationOwnerBoundary.userDataDir, id).toLowerCase();
+  if (existingIds.some((profile) => botProfileDir(creationOwnerBoundary.userDataDir, profile.id).toLowerCase() === newHome)) {
+    throwIpcError('ALREADY_EXISTS', 'Bot home already belongs to another profile');
+  }
   if (avatarImage) {
     const written = await writeBlob(avatarImage);
     assertCreationOwnerStillCurrent();
@@ -1065,6 +1078,7 @@ export async function createBotProfile(raw: unknown) {
 }
 
 export function registerBotIpc(): void {
+  setRemoteBotSessionLookup(readRemoteBotSessionAccess);
   ipcMain.handle('local-db:bots:model-chain-settings-get', async (event) => {
     assertTrustedAppRendererEvent(event);
     const state = readBotModelChainSettingsState();

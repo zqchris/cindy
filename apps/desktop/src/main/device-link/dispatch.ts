@@ -68,6 +68,10 @@ import { createLogger } from '../logger';
 import { normalizeSessionProviderId } from '../maker-host/session-provider-store.js';
 import { readDeviceLinkSettings } from './settings-store';
 import { dispatchLocalInvoke } from './invoke-registry';
+import {
+  assertRemoteBotInvocationAllowed, projectRemoteSessionResult, projectRemoteBotPush,
+  hasRemoteBotSessionLookup, setRemoteBotSessionLookup,
+} from './remoteBotSessionBoundary.js';
 import { getControllerPlatform } from './controllerPlatform';
 import { runDeviceLinkInvokeContext } from './invoke-context';
 import { fetchLocalMediaToOss } from './mediaFetch';
@@ -137,6 +141,33 @@ const UPDATE_RELAUNCH_NON_BLOCKING_INVOKE_CHANNELS: ReadonlySet<string> = new Se
 ]);
 const textEncoder = new TextEncoder();
 const offlinePushQueue = createOfflinePushQueue();
+
+// Serialize the async DB check at the final wire boundary, retaining per-peer
+// order even when replies arrive out of order. Bounds match best-effort push:
+// dropped frames recover through the existing Session snapshot mechanism.
+const botPushChecks = new Map<string, { tail: Promise<void>; bytes: number; count: number }>();
+function sendBotCheckedPush(
+  dst: string, channel: string, payload: unknown, send: (payload: unknown) => void,
+  failed: (error: unknown) => void,
+): void {
+  if (!hasRemoteBotSessionLookup()) { send(payload); return; }
+  let size: number;
+  try { size = byteLength(JSON.stringify(payload)); } catch (error) { failed(error); return; }
+  const queue = botPushChecks.get(dst) ?? { tail: Promise.resolve(), bytes: 0, count: 0 };
+  if (queue.count >= 64 || queue.bytes + size > 8 * 1024 * 1024) return;
+  const client = activeClient;
+  const linkEpoch = remoteInvokeLinkEpoch.get(dst) ?? 0;
+  const owner = broadcastTap.captureDataOwnerBroadcastScope();
+  queue.count += 1; queue.bytes += size;
+  queue.tail = queue.tail.then(async () => {
+    const projected = await projectRemoteBotPush(payload, channel);
+    if (projected !== null && activeClient === client && (remoteInvokeLinkEpoch.get(dst) ?? 0) === linkEpoch && !isControllerRevoked(dst) && broadcastTap.isDataOwnerBroadcastScopeCurrent(owner)) send(projected);
+  }).catch(failed).finally(() => {
+    queue.count -= 1; queue.bytes -= size;
+    if (queue.count === 0 && botPushChecks.get(dst) === queue) botPushChecks.delete(dst);
+  });
+  botPushChecks.set(dst, queue);
+}
 
 /** 只排队可由 session snapshot 对账、且不携带权限终态的会话域事件。 */
 const OFFLINE_QUEUEABLE_PUSH_CHANNELS: ReadonlySet<string> = new Set([
@@ -1111,11 +1142,10 @@ function flushMakerEventBatchSession(
         if (!activeClient || activeClient.getStatus() !== 'online') {
           throw new DeviceLinkError('NOT_CONNECTED', 'relay offline');
         }
-        if (segment.ownerStamp === undefined) {
-          activeClient.sendPush(dst, MAKER_EVENT_BATCH_CHANNEL, payload);
-        } else {
-          activeClient.sendPush(dst, MAKER_EVENT_BATCH_CHANNEL, payload, segment.ownerStamp);
-        }
+        sendBotCheckedPush(dst, MAKER_EVENT_BATCH_CHANNEL, payload, (projected) => {
+          if (segment.ownerStamp === undefined) activeClient?.sendPush(dst, MAKER_EVENT_BATCH_CHANNEL, projected);
+          else activeClient?.sendPush(dst, MAKER_EVENT_BATCH_CHANNEL, projected, segment.ownerStamp);
+        }, () => { outcome.droppedEvents += slice.length; });
       } catch (err) {
         // 发不出去就丢这一片(不降级、不重试、不滞留):理由与四轮 review 的推导见
         // MakerEventBatchFlushOutcome 注释。relay 离线时后续切片连尝试都省掉。
@@ -1258,11 +1288,15 @@ function drainSessionActivityStage(dst: string, stage: SessionActivityStage): vo
     if (!next) return;
     const [key, item] = next;
     try {
-      if (item.ownerStamp === undefined) {
-        activeClient.sendPush(dst, SESSION_ACTIVITY_CHANNEL, item.payload);
-      } else {
-        activeClient.sendPush(dst, SESSION_ACTIVITY_CHANNEL, item.payload, item.ownerStamp);
-      }
+      sendBotCheckedPush(dst, SESSION_ACTIVITY_CHANNEL, item.payload, (projected) => {
+        if (item.ownerStamp === undefined) activeClient?.sendPush(dst, SESSION_ACTIVITY_CHANNEL, projected);
+        else activeClient?.sendPush(dst, SESSION_ACTIVITY_CHANNEL, projected, item.ownerStamp);
+      }, (error) => {
+        if (error instanceof DeviceLinkError && error.code === 'BACKPRESSURE' && sessionActivityStages.get(dst) === stage && !stage.queue.has(key)) {
+          stage.queue.set(key, item);
+          scheduleSessionActivityRetry(dst, stage);
+        }
+      });
       stage.queue.delete(key);
     } catch (err) {
       if (err instanceof DeviceLinkError && err.code === 'BACKPRESSURE') {
@@ -1437,6 +1471,17 @@ export function pushToTopicSubscribers(
 }
 
 function sendPushBestEffort(
+  dst: string,
+  channel: string,
+  payload: unknown,
+  ownerStamp?: PushOwnerStamp,
+): void {
+  sendBotCheckedPush(dst, channel, payload,
+    (projected) => sendPushBestEffortAuthorized(dst, channel, projected, ownerStamp),
+    () => log.warn('remote Bot push authorization failed'));
+}
+
+function sendPushBestEffortAuthorized(
   dst: string,
   channel: string,
   payload: unknown,
@@ -1910,7 +1955,7 @@ async function handleInvoke(
   const fingerprint = JSON.stringify(payload) ?? '';
   const admissionFailure = currentRemoteInvokeAdmissionFailure(src);
   if (admissionFailure) {
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -1929,7 +1974,7 @@ async function handleInvoke(
       sendRequestIdReuseError(client, src, requestId, payload);
       return;
     }
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -1948,7 +1993,7 @@ async function handleInvoke(
       sendRequestIdReuseError(client, src, requestId, payload);
       return;
     }
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -1970,7 +2015,7 @@ async function handleInvoke(
     if (inFlight.linkEpoch !== invokeLinkEpoch) return;
     const result = await inFlight.promise;
     if ((remoteInvokeLinkEpoch.get(src) ?? 0) !== invokeLinkEpoch) return;
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -1985,7 +2030,7 @@ async function handleInvoke(
   }
   if (payload && (payload.channel === DL_SUBSCRIBE_CHANNEL || payload.channel === DL_UNSUBSCRIBE_CHANNEL)) {
     const result = handleSubscriptionFrame(src, payload);
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -2018,7 +2063,7 @@ async function handleInvoke(
         message: 'remote invoke execution queue is full',
       },
     };
-    if (!sendInvokeResultSafe(
+    if (!await sendAuthorizedInvokeResultSafe(
       client,
       src,
       requestId,
@@ -2071,6 +2116,8 @@ async function handleInvoke(
       inFlightRemoteInvokeBytes -= invokeBytes;
     }
   }
+  // Fresh execution already includes the DB checks in runInvoke, within its
+  // orphan deadline and busy lease. Only replayed replies need a new async check.
   if (!sendInvokeResultSafe(
     client,
     src,
@@ -2264,6 +2311,33 @@ function sanitizeMessageInvokeResult(
     return out;
   });
   return changed ? { ok: true, result: sanitized } : result;
+}
+
+async function authorizeRemoteBotResult(
+  channel: string | undefined, args: unknown[] | undefined, result: InvokeResultPayload,
+): Promise<InvokeResultPayload> {
+  if (!result.ok) return result;
+  try {
+    await assertRemoteBotInvocationAllowed(args ?? [], channel);
+    return { ok: true, result: await projectRemoteSessionResult(channel ?? '', result.result) };
+  } catch {
+    return { ok: false, error: { code: 'IPC_ERROR', message: '[NOT_FOUND] Session does not exist' } };
+  }
+}
+
+/** Revalidate cached/replayed replies without executing a mutation twice. */
+async function sendAuthorizedInvokeResultSafe(
+  ...args: Parameters<typeof sendInvokeResultSafe>
+): Promise<boolean> {
+  if (!hasRemoteBotSessionLookup()) return sendInvokeResultSafe(...args);
+  const [client, src] = args;
+  const epoch = remoteInvokeLinkEpoch.get(src) ?? 0;
+  const owner = broadcastTap.captureDataOwnerBroadcastScope();
+  args[3] = await authorizeRemoteBotResult(args[4], args[5], args[3]);
+  if (activeClient !== client || (remoteInvokeLinkEpoch.get(src) ?? 0) !== epoch || !broadcastTap.isDataOwnerBroadcastScopeCurrent(owner)) return true;
+  const admission = currentRemoteInvokeAdmissionFailure(src);
+  if (admission) args[3] = admission;
+  return sendInvokeResultSafe(...args);
 }
 
 /**
@@ -2461,6 +2535,23 @@ export function flushMakerEventBatchesOnReconnect(): void {
   }
 }
 
+const botInvokeOutboxChecks = new Set<string>();
+function flushAuthorizedBotOutboxEntry(key: string, queued: QueuedRemoteInvokeResult, client: DeviceLinkClient): void {
+  if (botInvokeOutboxChecks.has(key)) return;
+  botInvokeOutboxChecks.add(key);
+  const owner = broadcastTap.captureDataOwnerBroadcastScope();
+  const epoch = remoteInvokeLinkEpoch.get(queued.src) ?? 0;
+  void authorizeRemoteBotResult(queued.channel, queued.args, queued.result).then((result) => {
+    if (remoteInvokeResultOutbox.get(key) !== queued || activeClient !== client ||
+        (remoteInvokeLinkEpoch.get(queued.src) ?? 0) !== epoch || !broadcastTap.isDataOwnerBroadcastScopeCurrent(owner)) return;
+    sendInvokeResultSafe(client, queued.src, queued.requestId,
+      currentRemoteInvokeAdmissionFailure(queued.src) ?? result, queued.channel, queued.args, queued.fingerprint);
+  }).catch(() => log.warn('remote Bot reply authorization failed')).finally(() => {
+    botInvokeOutboxChecks.delete(key);
+    if (remoteInvokeResultOutbox.size > 0) scheduleRemoteInvokeResultOutboxFlush();
+  });
+}
+
 function flushRemoteInvokeResultOutbox(onlySrc?: string): void {
   const client = activeClient;
   if (!client) {
@@ -2490,6 +2581,10 @@ function flushRemoteInvokeResultOutbox(onlySrc?: string): void {
     // presence 短暂滞后/误报不得把这条恢复事件一并拦死(review P2)。
     if (!onlySrc && isKnownUnroutable(queued.src)) {
       blockedPeers.add(queued.src);
+      continue;
+    }
+    if (hasRemoteBotSessionLookup() && queued.result.ok) {
+      flushAuthorizedBotOutboxEntry(key, queued, client);
       continue;
     }
     const attempt = trySendInvokeResult(
@@ -3013,6 +3108,8 @@ export async function runInvoke(
 
   try {
     const args = payload.args ?? [];
+    const invocationOwner = broadcastTap.captureDataOwnerBroadcastScope();
+    if (hasRemoteBotSessionLookup()) await assertRemoteBotInvocationAllowed(args, payload.channel);
     const listingCapabilities = payload.channel === 'maker:provider:list'
       ? invokeControllerCapabilities(payload)
       : [];
@@ -3030,6 +3127,8 @@ export async function runInvoke(
         payload.channel === 'maker:provider:list' ? [] : args,
       ),
     );
+    if (hasRemoteBotSessionLookup()) await assertRemoteBotInvocationAllowed(args, payload.channel);
+    if (!broadcastTap.isDataOwnerBroadcastScopeCurrent(invocationOwner)) throw new Error('[NOT_FOUND] Session does not exist');
     // 远程 set-* 回流:被控端 set-* runtime-only,补一次 DB 持久化 + 广播 patched,让控制端
     // 镜像收敛到被控端真相(取代控制端乐观覆盖)。本机会话不走这条(走 renderer update)。
     await persistRemoteSetting(payload.channel, payload.args ?? [], result);
@@ -3037,7 +3136,7 @@ export async function runInvoke(
       ok: true,
       result: projectInvokeResultForTunnel(
         payload.channel,
-        result,
+        await projectRemoteSessionResult(payload.channel, result),
         subscriptions.controllerSupports(
           src,
           CONTROLLER_CAPABILITY_PROVIDER_LOGO_KINDS_V2,
@@ -3118,6 +3217,9 @@ function shortId(deviceId: string): string {
 export const __testing = {
   reset(): void {
     subscriptions.__testing.reset();
+    setRemoteBotSessionLookup(null);
+    botPushChecks.clear();
+    botInvokeOutboxChecks.clear();
     onControllersChanged = null;
     onRemoteInvokeBusyChanged = null;
     inFlightRemoteInvokeCount = 0;

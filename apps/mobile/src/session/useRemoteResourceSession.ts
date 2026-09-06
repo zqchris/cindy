@@ -43,7 +43,18 @@ export function useRemoteResourceSession(deviceId: string, deviceName: string, s
           router.setParams({ sessionId: session.id });
         }
         if (resourceKind === 'bot') void markRemoteResourceRead(user?.id ?? '', deviceId, resourceId, resource.display.lastReplyAt ?? 0);
-      } catch { /* normal session recovery handles link errors; retry on focus/push/reconnect */ }
+      } catch (error) {
+        if (!valid()) return;
+        const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+        if (code === 'NOT_FOUND' || /\[NOT_FOUND\]/.test(String(error))) {
+          // A removed/hidden resource must leave the cached task view immediately.
+          // The resolver displays the existing unavailable/retry state.
+          router.replace({ pathname: '/resources/[collectionId]/[resourceId]', params: {
+            collectionId, resourceId, resourceKind, deviceId, deviceName,
+          } });
+        }
+        // Transient link errors retain the normal task recovery path.
+      }
     };
     const offPush = onRemoteResourceChanged((source, payload) => {
       if (source !== deviceId || payload.collectionId !== collectionId || timer) return;
