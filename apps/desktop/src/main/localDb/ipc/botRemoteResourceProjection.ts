@@ -6,6 +6,7 @@ import type {
 } from '@cindy/device-link';
 
 import type { BotRemoteResourceSource } from './bots.js';
+import { isBotVisibleRemotely } from './botRemoteVisibility.js';
 import { isManagedBotAvatarUrl } from '../../../shared/botAvatarValue.js';
 
 export const TEAMMATES_REMOTE_COLLECTION_ID = 'teammates';
@@ -136,7 +137,7 @@ export function visibleBotRemoteResourceSources(
   sources: readonly BotRemoteResourceSource[],
 ): BotRemoteResourceSource[] {
   return sources
-    .filter((source) => !source.hiddenAt)
+    .filter(isBotVisibleRemotely)
     .sort((left, right) => {
       const pinned = Number(Boolean(right.pinnedAt)) - Number(Boolean(left.pinnedAt));
       return pinned || right.activityAt - left.activityAt || left.id.localeCompare(right.id);

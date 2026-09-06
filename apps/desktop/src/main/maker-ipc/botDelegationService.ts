@@ -870,17 +870,24 @@ export function createBotDelegationService(deps: BotDelegationServiceDeps) {
         role: botSessionLinks.role,
         profileVersion: botSessionLinks.profileVersion,
         sessionStatus: sessions.status,
+        sessionSource: sessions.source,
+        linkArchivedAt: botSessionLinks.archivedAt,
+        profileStatus: botProfiles.status,
         permissionMode: sessions.permissionMode,
         workingDir: sessions.workingDir,
         remoteHostId: sessions.remoteHostId,
       })
       .from(botSessionLinks)
       .innerJoin(sessions, eq(sessions.id, botSessionLinks.sessionId))
+      .innerJoin(botProfiles, eq(botProfiles.id, botSessionLinks.botId))
       .where(eq(botSessionLinks.sessionId, callerSessionId))
       .limit(1);
     if (
       !link
       || link.sessionStatus !== 'active'
+      || link.sessionSource !== 'bot'
+      || link.profileStatus !== 'active'
+      || link.linkArchivedAt !== null
       || (link.role !== 'canonical' && link.role !== 'delegation')
     ) return null;
     return link;
