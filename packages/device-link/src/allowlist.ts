@@ -18,7 +18,7 @@
  * 双层校验:控制端发送前(快速失败)+ 被控端执行前(权威)。
  * 新增 channel 不进表即天然不可远程调用(代码保证确定性)。
  */
-import { SESSION_ACTIVITY_CHANNEL } from './topics.js';
+import { SESSION_ACTIVITY_CHANNEL, SESSION_SYNC_CHANNEL } from './topics.js';
 import {
   REMOTE_RESOURCE_CHANGED_CHANNEL,
   REMOTE_RESOURCE_CHANNELS,
@@ -605,6 +605,7 @@ export const PUSH_FORWARD_ALLOWLIST: ReadonlySet<string> = new Set([
   'local-db:sessions:created',
   'local-db:sessions:patched',
   SESSION_ACTIVITY_CHANNEL,
+  SESSION_SYNC_CHANNEL,
   'local-db:messages:created',
   'local-db:messages:deleted',
   // 被控端 terminal error 落库脏信号:控制端据此把已加载历史的远程会话标脏,下次打开重拉。
