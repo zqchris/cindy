@@ -2104,6 +2104,8 @@ export default function SessionScreen() {
   useRemoteResourceSession(deviceId, deviceName, sessionId,
     currentSession?.id === sessionId && hasRenderedMessages
       && readAckSyncedKey === `${sessionId}:${connectionEpoch}`
+      // A pre-ACK snapshot may omit replies sent before the subscription took effect.
+      && contentRecoveryKey !== null && contentSyncedKey === contentRecoveryKey
       && !outboxRecoverySyncHeld && !loading);
   const lastAckKeyRef = useRef<string | null>(null);
   // AppState 门槛:锁屏 / 切后台时导航焦点不变,useFocusEffect 的 cleanup 不会跑,

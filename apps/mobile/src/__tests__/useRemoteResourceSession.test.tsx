@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import ts from 'typescript';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,6 +30,29 @@ vi.mock('@/device-link/remoteResourceCache', () => ({ markRemoteResourceRead: h.
 vi.mock('@/device-link/focusedTopicSubscription', () => ({ startFocusedTopicSubscription: () => () => {} }));
 vi.mock('@/session/remoteSessionStore', () => ({ remoteSessionStore: h.store }));
 import { useRemoteResourceSession } from '@/session/useRemoteResourceSession';
+// Evaluate the real screen's hook argument so this regression also catches a
+// missing recovery fence at the call site, rather than testing a copied gate.
+const screen = ts.createSourceFile('screen.tsx', readFileSync(
+  resolve(process.cwd(), 'app/sessions/[sessionId].tsx'), 'utf8',
+), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+function screenReadGate(contentRecoveryKey: string | null, contentSyncedKey: string | null): boolean {
+  let argument: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.expression.getText(screen) === 'useRemoteResourceSession') argument = node.arguments[3];
+    ts.forEachChild(node, visit);
+  };
+  visit(screen);
+  if (!argument) throw new Error('Missing production companion read gate');
+  const compiled = ts.transpileModule(`const gate = ${argument.getText(screen)};`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  return new Function('contentRecoveryKey', 'contentSyncedKey', `
+    const currentSession = { id: 'task-1' }, sessionId = 'task-1', connectionEpoch = 1;
+    const hasRenderedMessages = true, readAckSyncedKey = 'task-1:1', outboxRecoverySyncHeld = false, loading = false;
+    ${compiled}
+    return gate;
+  `)(contentRecoveryKey, contentSyncedKey);
+}
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 function Probe({ canMarkRead }: { canMarkRead: boolean }) { useRemoteResourceSession('mac', 'My Mac', 'task-1', canMarkRead); return null; }
@@ -44,6 +70,20 @@ describe('companion task visibility refresh', () => {
     expect(h.markRead).not.toHaveBeenCalled();
     await render(true);
     expect(h.markRead).toHaveBeenCalledWith('owner', 'mac', 'bot-1', 200);
+  });
+  it('keeps the gap reply unread until the snapshot after the exact subscription ACK is applied', async () => {
+    // Old history has rendered and the ordinary read ACK gate is open, but the
+    // resource already advertises a reply produced in the subscription gap.
+    h.get.mockResolvedValue({ links: [{ rel: 'conversation', target: { kind: 'session', sessionId: 'task-1' } }], display: { lastReplyAt: 200 } });
+    await render(screenReadGate(null, null));
+    expect(h.markRead).not.toHaveBeenCalled();
+    const ack = JSON.stringify(['mac', 'task-1', 1, 7]);
+    await render(screenReadGate(ack, null)); // ACK arrived; recovery read pending.
+    expect(h.markRead).not.toHaveBeenCalled();
+    await render(screenReadGate(ack, JSON.stringify(['mac', 'task-1', 1, 6])));
+    expect(h.markRead).not.toHaveBeenCalled(); // A prior ACK snapshot is insufficient.
+    await render(screenReadGate(ack, ack)); // Gap reply has now been applied.
+    expect(h.markRead).toHaveBeenCalledExactlyOnceWith('owner', 'mac', 'bot-1', 200);
   });
   it.each(['resource', 'link', 'session', 'disconnect'])('preserves unread when opening fails at %s', async (stage) => {
     h.get.mockResolvedValue({ links: stage === 'link' ? [] : [{ rel: 'conversation', target: { kind: 'session', sessionId: 'task-2' } }], display: { lastReplyAt: 200 } });
