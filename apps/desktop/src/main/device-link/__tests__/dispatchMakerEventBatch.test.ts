@@ -667,6 +667,23 @@ describe('running session recovery on slow links', () => {
     expect(h.sent.filter(p => p.dst === 'old').every(p => p.channel === MAKER_EVENT_BATCH_CHANNEL)).toBe(true);
   });
 
+  it('retries the final activity update when the async authorization queue is full', async () => {
+    const h = mkClient();
+    __testing.setActiveClient(h.client as never);
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    setRemoteBotSessionLookup(async () => { await pending; return 'visible'; });
+    subscriptions.subscribe('phone', ['sessions']);
+    for (let index = 0; index < 65; index++) {
+      __testing.forwardPush(SESSION_ACTIVITY_CHANNEL, { sessionId: `s${index}`, phase: 'completed' });
+    }
+    expect(h.sent).toHaveLength(0);
+    finish();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.sent).toHaveLength(65);
+    expect(h.sent.at(-1)?.payload).toEqual({ sessionId: 's64', phase: 'completed' });
+  });
+
   it('keeps old deltas, snapshot and new deltas ordered through the async DB gate', async () => {
     const h = mkClient();
     __testing.setActiveClient(h.client as never);

@@ -1443,15 +1443,19 @@ function drainSessionActivityStage(dst: string, stage: SessionActivityStage): vo
     if (!next) return;
     const [key, item] = next;
     try {
+      let backpressured = false;
       sendBotCheckedPush(dst, SESSION_ACTIVITY_CHANNEL, item.payload, (projected) => {
         if (item.ownerStamp === undefined) activeClient?.sendPush(dst, SESSION_ACTIVITY_CHANNEL, projected);
         else activeClient?.sendPush(dst, SESSION_ACTIVITY_CHANNEL, projected, item.ownerStamp);
       }, (error) => {
-        if (error instanceof DeviceLinkError && error.code === 'BACKPRESSURE' && sessionActivityStages.get(dst) === stage && !stage.queue.has(key)) {
-          stage.queue.set(key, item);
+        if (error instanceof DeviceLinkError && error.code === 'BACKPRESSURE' && sessionActivityStages.get(dst) === stage) {
+          backpressured = true;
+          if (!stage.queue.has(key)) stage.queue.set(key, item);
           scheduleSessionActivityRetry(dst, stage);
         }
       });
+      // Synchronous queue admission failure must retain the staged update too.
+      if (backpressured) return;
       stage.queue.delete(key);
     } catch (err) {
       if (err instanceof DeviceLinkError && err.code === 'BACKPRESSURE') {
