@@ -1,4 +1,5 @@
 import {
+  type GhostRecommendation,
   GHOST_LOCALES,
   GHOST_MANIFEST_SUMMARY_MAX_CHARS,
   GHOST_OAUTH_SCOPES_MAX,
@@ -1367,6 +1368,8 @@ export function isGhostSetupErrorCode(value: unknown): value is GhostSetupErrorC
 
 /** ghost.json 清单(不变量由 validateGhostManifest 保证)。 */
 export interface GhostManifest {
+  /** Optional v3 extension, validated only when projecting homepage recommendations. */
+  recommendations?: unknown;
   /** 原始清单格式版本；v2 已在解析边界投影成与 v3 相同的直接字段。 */
   schemaVersion: 2 | 3;
   /** 唯一标识,同时是安装目录名与 panelKind 后缀。 */
@@ -2085,7 +2088,8 @@ export function ghostPermissionItems(manifest: GhostManifest): GhostPermissionIt
     items.push({ key: 'fs', kind: 'fs', labelKey: 'fsWrite', detailKey: 'fsWriteDetail' });
   }
   // library 能力:持久作品库(用户数据语义,不是临时缓存)。详情页必须讲清
-  // 卸载不删、删除走独立确认,以及会打开系统文件夹/另存为对话框。
+  // 卸载不删、删除走独立确认、会打开系统文件夹/另存为对话框,以及可把 PNG
+  // 位图写入系统剪贴板(无确认框,会覆盖当前剪贴板)。
   if (manifest.library === true) {
     items.push({
       key: 'library',
@@ -6217,6 +6221,12 @@ export type GhostPipeHostRequest =
       capability: GhostMediaCapability;
     };
 
+/** Replaces only the calling plugin's catalog; never starts a task. */
+export interface GhostPipeRecommendationsUpdate {
+  type: 'recommendations-update';
+  items: GhostRecommendation[];
+}
+
 /** 插件请求 Agent 新回合时可选的会话处理方式。 */
 export const GHOST_AGENT_RUN_MODES = ['continue', 'fork', 'new'] as const;
 export type GhostAgentRunMode = (typeof GHOST_AGENT_RUN_MODES)[number];
@@ -8248,6 +8258,7 @@ export const GHOST_LIBRARY_OPS = [
   'db.userVersion',
   'reveal',
   'saveAs',
+  'clipboardWrite',
 ] as const;
 export type GhostLibraryOp = (typeof GHOST_LIBRARY_OPS)[number];
 
@@ -8257,7 +8268,7 @@ export interface GhostPipeLibraryRequest {
   op: GhostLibraryOp;
   /** library 相对路径(段数/总长上限比 fs 宽:32 段/512 字符)。 */
   path?: string;
-  /** write 内容(≤16MiB;更大走 writeBegin 分块流)。 */
+  /** write 内容(≤16MiB;更大走 writeBegin 分块流);clipboardWrite 只收 encoding:'base64' 的 PNG 字节。 */
   content?: string;
   encoding?: 'utf8' | 'base64';
   /** write:排他创建(目标已存在则 ALREADY_EXISTS)。 */
@@ -8353,6 +8364,8 @@ export type GhostPipeLibraryResult =
   | { ok: true; op: 'saveAs'; cancelled: true }
   /** saveAs 成功:path 是库内相对键(与请求相同),不是用户另存到的绝对路径。 */
   | { ok: true; op: 'saveAs'; cancelled: false; path: string; bytes: number }
+  /** clipboardWrite 成功:bytes 是写入系统剪贴板的 PNG 位图字节数,不是文件引用。 */
+  | { ok: true; op: 'clipboardWrite'; bytes: number }
   | { ok: false; errorCode: string; message: string };
 
 /** Library 概览(ghosts:library-overview IPC 载荷;设置页插件详情消费)。 */
