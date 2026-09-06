@@ -928,7 +928,6 @@ export default function SessionScreen() {
   // 新发起的请求作废旧请求。
   const rewindRequestSeqRef = useRef(0);
   const deviceName = readRouteParam(params.deviceName) ?? deviceId;
-  useRemoteResourceSession(deviceId, deviceName, sessionId);
   const routeDraft = readRouteParam(params.draft);
   const routeFocusClientId = readRouteParam(params.focusClientId);
   const routeFocusComposerRequestKey = readRouteParam(params.focusComposerRequestKey);
@@ -2073,6 +2072,10 @@ export default function SessionScreen() {
     () => remoteSessionStore.getSessionLiveActivity(sessionId)?.attention === true,
   );
   const hasRenderedMessages = messages.length > 0;
+  useRemoteResourceSession(deviceId, deviceName, sessionId,
+    currentSession?.id === sessionId && hasRenderedMessages
+      && readAckSyncedKey === `${sessionId}:${connectionEpoch}`
+      && !outboxRecoverySyncHeld && !loading);
   const lastAckKeyRef = useRef<string | null>(null);
   // AppState 门槛:锁屏 / 切后台时导航焦点不变,useFocusEffect 的 cleanup 不会跑,
   // 驻留计时器可能在没有真实前台展示的情况下(甚至后台恢复补跑时)发出 explicit

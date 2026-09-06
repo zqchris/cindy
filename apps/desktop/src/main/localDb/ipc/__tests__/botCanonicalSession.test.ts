@@ -152,6 +152,7 @@ import {
   markBotProfileRuntimeApplied,
   markBotProfileRuntimeFailed,
 } from '../../../maker-ipc/botProfileRuntime';
+import { createBotLifecycleService } from '../../../maker-ipc/botLifecycleService';
 import { createBotDelegationService } from '../../../maker-ipc/botDelegationService';
 import {
   BOT_DELEGATION_MAX_DISPATCH_ATTEMPTS,
@@ -399,9 +400,9 @@ describe('Bot canonical Session lifecycle', () => {
     expect(h.sqlite!.prepare('SELECT COUNT(*) AS count FROM bot_profiles').get()).toEqual({ count: 1 });
   });
 
-  it('rejects a new ID whose home aliases a legacy profile', async () => {
+  it.each(['Bot-1', 'bot/1'])('rejects a new ID whose home aliases legacy profile %s', async (legacyId) => {
     h.sqlite!.pragma('foreign_keys = OFF');
-    h.sqlite!.prepare("UPDATE bot_profiles SET id = 'Bot-1' WHERE id = 'bot-1'").run();
+    h.sqlite!.prepare("UPDATE bot_profiles SET id = ? WHERE id = 'bot-1'").run(legacyId);
     await expect(invoke('local-db:bots:create', { id: 'bot-1', name: 'Alias' })).rejects.toMatchObject({ code: 'ALREADY_EXISTS' });
     h.sqlite!.pragma('foreign_keys = ON');
   });
@@ -2612,6 +2613,27 @@ describe('Bot Session task end-to-end runtime', () => {
       expectedProfileVersion: 1,
     });
   }
+
+  it.each(['delayed', 'failed'])('revokes caller capabilities while Session close is %s', async (mode) => {
+    await seedPair();
+    let finish!: () => void;
+    let fail!: (error: Error) => void;
+    const closeSession = vi.fn(() => new Promise<void>((resolve, reject) => { finish = resolve; fail = reject; }));
+    const lifecycle = createBotLifecycleService({ maker: { closeSession } as never, getDelegationService: () => null });
+    const runtime = createDelegationRuntime();
+    const pausing = lifecycle.run({ action: 'pause', botId: 'bot-a' });
+    try {
+      await vi.waitFor(() => expect(closeSession).toHaveBeenCalled());
+      expect(await runtime.delegation.startSessionTask({ callerSessionId: 'session-1', objective: 'Must not start while closing' })).toMatchObject({ ok: false });
+      expect(await listBotSkillsForSession({ callerSessionId: 'session-1' })).toMatchObject({ ok: false, errorCode: 'BOT_SESSION_INACTIVE' });
+      if (mode === 'failed') fail(new Error('runtime did not close')); else finish();
+      const result = await pausing;
+      expect(result.status).toBe('paused');
+      if (mode === 'failed') expect(result.warnings).toEqual([expect.stringContaining('SESSION_CLOSE_FAILED')]);
+      expect(await runtime.delegation.startSessionTask({ callerSessionId: 'session-1', objective: 'Must stay paused' })).toMatchObject({ ok: false });
+      expect(runtime.started).toHaveLength(0);
+    } finally { finish?.(); await pausing; runtime.delegation.dispose(); }
+  });
 
   it.each(['paused', 'archived-link'])('blocks new work and Skill access from a still-running %s caller', async (state) => {
     await seedPair();

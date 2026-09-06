@@ -132,6 +132,21 @@ describe('伙伴的家', () => {
     expect(botProfileDir(root, '../../etc').startsWith(path.join(root, 'bots'))).toBe(true);
   });
 
+  it('deleting one canonical ID preserves the other companion identity, skills and workspace', async () => {
+    for (const id of ['bot-a', 'bot-a-1']) {
+      await writeBotProfileFolder(root, id, { identitySource: id });
+      for (const dir of ['skills', 'workspace']) {
+        await fs.mkdir(path.join(botProfileDir(root, id), dir), { recursive: true });
+        await fs.writeFile(path.join(botProfileDir(root, id), dir, 'keep.md'), id);
+      }
+    }
+    await removeBotProfileFolder(root, 'bot-a');
+    expect((await readBotProfileFolder(root, 'bot-a-1')).identitySource).toBe('bot-a-1');
+    for (const dir of ['skills', 'workspace']) {
+      expect(await fs.readFile(path.join(botProfileDir(root, 'bot-a-1'), dir, 'keep.md'), 'utf8')).toBe('bot-a-1');
+    }
+  });
+
   it('删除伙伴时整个家一起走,不存在也不抛', async () => {
     await writeBotProfileFolder(root, 'bot-a', { identitySource: '在' });
     await removeBotProfileFolder(root, 'bot-a');

@@ -1,4 +1,4 @@
-import { cacheRemoteResourceItems, readRemoteResourceSnapshot, isRemoteResourceUnread, markRemoteResourceRead, subscribeRemoteResourceCache, remoteResourceCacheRevision } from '@/device-link/remoteResourceCache';
+import { cacheRemoteResourceItems, readRemoteResourceSnapshot, isRemoteResourceUnread, subscribeRemoteResourceCache, remoteResourceCacheRevision } from '@/device-link/remoteResourceCache';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
@@ -190,7 +190,6 @@ export default function RemoteCollectionScreen() {
 
   const openItem = useCallback((hosted: HostedResourceItem) => {
     if (!isRemoteResourceHostOnline(relayStatus, getPresenceAvailability(hosted.host.deviceId), replyEpochs[hosted.host.deviceId], connectionEpoch)) return;
-    if (hosted.item.ref.kind === 'bot') void markRemoteResourceRead(user?.id ?? '', hosted.host.deviceId, hosted.item.ref.id, hosted.item.display.lastReplyAt ?? 0);
     guardedPush({
       pathname: '/resources/[collectionId]/[resourceId]',
       params: {
@@ -202,7 +201,7 @@ export default function RemoteCollectionScreen() {
         title: resolveRemoteText(hosted.item.display.title, i18n.language),
       },
     });
-  }, [collectionId, connectionEpoch, getPresenceAvailability, guardedPush, i18n.language, relayStatus, replyEpochs, user?.id]);
+  }, [collectionId, connectionEpoch, getPresenceAvailability, guardedPush, i18n.language, relayStatus, replyEpochs]);
 
   return (
     <SafeAreaView

@@ -10,7 +10,7 @@ import { remoteSessionStore } from './remoteSessionStore';
 import type { RemoteSession } from './types';
 
 /** Follow a companion's current host-owned task on focus/reconnect, retaining its permanent identity. */
-export function useRemoteResourceSession(deviceId: string, deviceName: string, sessionId: string): void {
+export function useRemoteResourceSession(deviceId: string, deviceName: string, sessionId: string, canMarkRead: boolean): void {
   const params = useLocalSearchParams<{ resourceCollectionId?: string; resourceId?: string; resourceKind?: string }>();
   const collectionId = typeof params.resourceCollectionId === 'string' ? params.resourceCollectionId : '';
   const resourceId = typeof params.resourceId === 'string' ? params.resourceId : '';
@@ -18,7 +18,7 @@ export function useRemoteResourceSession(deviceId: string, deviceName: string, s
   const { invoke, connectionEpoch, status, onRemoteResourceChanged, subscribe, unsubscribe } = useDeviceLink();
   const { user, accountGeneration } = useAuth();
   const router = useRouter();
-  const binding = JSON.stringify([accountGeneration, connectionEpoch, deviceId, sessionId, collectionId, resourceId]);
+  const binding = JSON.stringify([accountGeneration, connectionEpoch, deviceId, sessionId, collectionId, resourceId, canMarkRead]);
   const current = useRef(binding); current.current = binding;
   useFocusEffect(useCallback(() => {
     if (!collectionId || !resourceId || !resourceKind || !deviceId || status !== 'online') return;
@@ -41,8 +41,9 @@ export function useRemoteResourceSession(deviceId: string, deviceName: string, s
           if (prior && prior !== deviceId) return;
           remoteSessionStore.upsertDeviceSession(deviceId, deviceName, session);
           router.setParams({ sessionId: session.id });
+          return; // The replacement task must mount and finish its own message sync first.
         }
-        if (resourceKind === 'bot') void markRemoteResourceRead(user?.id ?? '', deviceId, resourceId, resource.display.lastReplyAt ?? 0);
+        if (canMarkRead && resourceKind === 'bot') void markRemoteResourceRead(user?.id ?? '', deviceId, resourceId, resource.display.lastReplyAt ?? 0);
       } catch (error) {
         if (!valid()) return;
         const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
@@ -65,5 +66,5 @@ export function useRemoteResourceSession(deviceId: string, deviceName: string, s
     const appState = AppState.addEventListener('change', (state) => { generation += 1; if (state === 'active') void load(); });
     void load();
     return () => { disposed = true; offPush(); offTopic(); appState.remove(); if (timer) clearTimeout(timer); };
-  }, [binding, collectionId, deviceId, deviceName, invoke, onRemoteResourceChanged, resourceId, resourceKind, router, sessionId, status, subscribe, unsubscribe, user?.id]));
+  }, [binding, canMarkRead, collectionId, deviceId, deviceName, invoke, onRemoteResourceChanged, resourceId, resourceKind, router, sessionId, status, subscribe, unsubscribe, user?.id]));
 }
