@@ -93,11 +93,13 @@ import {
   createAutoReviewConfirmUndeliveredNotice,
   createAutoReviewUnavailableNotice,
   extractAutoReviewUserIntent,
+  appendAutoReviewUserIntent,
   isSystemPermissionDenialReason,
   resolveAutoReviewDecision,
+  toolAutoReviewAction,
   type AutoReviewDecision,
 } from '../shared/auto-review-decision.js';
-import { reviewAction, type ReviewableAction } from '../shared/auto-review.js';
+import type { ReviewableAction } from '../shared/auto-review.js';
 import { UsageTracker } from '../shared/usage-tracker.js';
 import { attachLiveGeneration, sampleGenerationDuration } from '../shared/live-generation-snapshot.js';
 import { getDefaultImageResizer } from '../shared/image-resizer.js';
@@ -755,7 +757,9 @@ const ASK_USER_DYNAMIC_TOOL: DynamicToolSpec = {
 };
 
 interface ActiveToolContext {
-  type: 'mcpToolCall' | 'dynamicToolCall';
+  type: 'mcpToolCall' | 'dynamicToolCall' | 'fileChange';
+  arguments?: unknown;
+  changes?: unknown;
   turnId?: string | null;
   server?: string | null;
   /**
@@ -4285,9 +4289,17 @@ export class CodexAgent extends BaseAgent {
      */
     let mutableProviderId: string | null | undefined = opts.providerId;
     let currentAutoReviewIntent = '';
+    const autoReviewContext = () => activeTurnPermissionPolicy?.autoReviewContext
+      ?? (activeTurnPermissionPolicy?.origin.kind === 'im'
+        ? { requesterAuthority: 'unknown' as const, source: 'direct' as const }
+        : undefined);
+    // Authorization belongs to the accepted input, not the foreground policy's lifetime.
+    let currentAutoReviewAuthority: ReturnType<typeof autoReviewContext>;
+    const priorAutoReviewIntent = () => JSON.stringify(currentAutoReviewAuthority ?? null) === JSON.stringify(autoReviewContext() ?? null) ? currentAutoReviewIntent : '';
     const autoReviewDecisionCache = new Map<string, Promise<AutoReviewDecision>>();
-    const setAutoReviewIntent = (content: UserMessage['content']): void => {
+    const setAutoReviewIntent = (content: UserMessage['content'], source = { authority: currentAutoReviewAuthority }): void => {
       currentAutoReviewIntent = extractAutoReviewUserIntent(content);
+      currentAutoReviewAuthority = source.authority && { ...source.authority };
       autoReviewDecisionCache.clear();
     // 每条新用户消息 = 新一轮,提示重新武装。ErrorBanner 那份只活到下一条非 error 事件
     // (renderer 的 handleStreamEvent 会清 recoverableError),所以「整个会话只说一次」
@@ -4898,6 +4910,7 @@ export class CodexAgent extends BaseAgent {
         // model so the exact current provider route remains resolvable.
         model: mutableCatalogModel ?? mutableModel,
         userIntent: currentAutoReviewIntent,
+        ...(currentAutoReviewAuthority ? { authorizationContext: currentAutoReviewAuthority } : {}),
         action,
         workspaceRoots: runtimeWorkspaceRoots().filter(
           (dir): dir is string => typeof dir === 'string' && dir.length > 0,
@@ -4915,11 +4928,13 @@ export class CodexAgent extends BaseAgent {
         );
       if (!cached) autoReviewDecisionCache.set(key, pending);
       return pending.then((decision) => (
-        directoryGeneration === autoReviewDirectoryGeneration
+        autoReviewDecisionCache.get(key) !== pending
+          ? { verdict: 'block', reason: 'User instructions changed; retry against the latest authorization.' }
+          : directoryGeneration === autoReviewDirectoryGeneration
           ? decision
           : {
-              verdict: 'ask',
-              reason: 'Directory permissions changed while this action was under review.',
+              verdict: 'block',
+              reason: 'Directory permissions changed; retry with the current scope.',
             }
       ));
     };
@@ -6464,6 +6479,8 @@ export class CodexAgent extends BaseAgent {
       resolve: (decision: ApprovalDecision) => void;
       kind: 'commandExecution' | 'fileChange' | 'mcpServerElicitation';
       settled: boolean;
+      /** AI wait is cancellable, but mode changes are handled after review. */
+      reviewing?: boolean;
       turnId: string | null;
       itemId?: string;
       /** prompt-each-time 高风险审批: 宽松模式也必须弹 UI, dismissAllPending('allow') 不得放行 */
@@ -6710,8 +6727,6 @@ export class CodexAgent extends BaseAgent {
       req: InteractionRequest,
       opts?: {
         forcePrompt?: boolean;
-        /** Auto 下跳过轻量 reviewer 转人工；仍保留 Full access 自动放行与热切换语义。 */
-        promptInAuto?: boolean;
         autoReviewAction?: ReviewableAction;
         itemId?: string;
       },
@@ -6724,60 +6739,58 @@ export class CodexAgent extends BaseAgent {
             forceTurnConfirmation(req.toolName, req.input));
         let unavailableHandoff = false;
         let approvalRequest = req;
-        const promptInAuto = opts?.promptInAuto === true;
         // Full access 的普通审批不应打断用户。Auto 在已验证路由上由 app-server
         // auto_review 负责；fallback 路由则由 user reviewer 把越界请求发回客户端，
         // 再由 Cindy reviewer 静默裁决。
         // forcePrompt 高风险 MCP inner tool
-        // (如 contacts delete/merge/系统回写)在任何模式下都必须拿到用户的逐次确认。
+        // retains its independent confirmation outside Auto.
         if (
           !forcePrompt &&
           mutablePermissionMode === 'bypassPermissions'
         ) {
           return Promise.resolve('accept');
         }
-        // Policy turns (unattended: feishu bot / 定时任务) 以 untrusted + read-only 发射,把命令/文件
-        // 升级请求发回 host 后自动接受非强制回调 —— 保留该无人值守语义,但**仍对危险桶 fail-closed**:
-        // 无人值守时没有人能批准一个 destructive / 凭证 / 远程执行动作,应拒绝,而不是让它逃出 read-only
-        // 沙箱静默执行(与交互式 Auto 共用同一张 Cindy core 安全网)。安全 / 仅需升级的动作照常自动
-        // 接受,不影响正常无人值守自动化(真需要跑危险命令的自动化应走 bypassPermissions,不受此影响)。
+        // Every Auto approval callback uses the shared reviewer, including
+        // policy turns and MCP actions. Static green decisions stay local;
+        // AI allow/block are silent and ask uses the existing interaction path.
         if (
-          !forcePrompt &&
-          activeTurnPermissionPolicy &&
-          mutablePermissionMode === 'auto'
-        ) {
-          if (opts?.autoReviewAction) {
-            const verdict = reviewAction(
-              opts.autoReviewAction,
-              runtimeWorkspaceRoots().filter((d): d is string => typeof d === 'string' && d.length > 0),
-              {
-                platform: sessionReviewPlatform,
-                writableRoots: runtimeWritableRoots(),
-              },
-            );
-            // 无人值守:只接受 core 判为 auto-approve 的安全动作。prompt / prompt-each-time 都意味着
-            // "需人确认"而此路径无人在场 → 一律 fail-closed decline(AGENTS.md 无人值守安全底线)。
-            return verdict === 'auto-approve' ? Promise.resolve('accept') : Promise.resolve('decline');
-          }
-          // 命令/文件类审批却没有可分类的 action(如 permissions 能力升级)——无法审查的高权限动作 →
-          // 同样 fail-closed 拒绝。mcpServerElicitation(交互输入)有自己的 forceConfirmToolCall 门,保留 auto-accept。
-          if (kind === 'commandExecution' || kind === 'fileChange') {
-            return Promise.resolve('decline');
-          }
-          return Promise.resolve('accept');
-        }
-        // Auto-review 兜底路径:非 OAuth 路由下 approvalsReviewer='user',app-server 把越界/网络
-        // 等审批请求发回 host(OAuth 原生 auto_review 则由 server 内部裁决、根本不到这里 —— 天然
-        // "原生优先、Cindy 兜底")。明显安全由本地规则放行；灰区调用当前会话模型做轻量
-        // allow/block/ask 裁决。allow/block 不依赖 interactionResolver；只有真正红线 ask 才走 UI，
-        // UI 不可用时 dispatchInteraction 自然 fail-closed decline。
-        if (
-          !forcePrompt &&
-          !promptInAuto &&
           mutablePermissionMode === 'auto' &&
-          opts?.autoReviewAction
+          req.kind === 'permission'
         ) {
-          const decision = await reviewAutoAction(opts.autoReviewAction);
+          const reviewThreadId = threadId;
+          const reviewTurnGeneration = turnStartGeneration;
+          const descendant = Boolean(requestThreadId && requestThreadId !== threadId);
+          const reviewEntry: PendingEntry = {
+            kind, turnId, settled: false, reviewing: true,
+            resolve: () => { reviewEntry.settled = true; },
+            ...(opts?.itemId ? { itemId: opts.itemId } : {}),
+          };
+          pendingApprovals.set(requestId, reviewEntry);
+          let decision: AutoReviewDecision;
+          try {
+            decision = await reviewAutoAction(
+              // Explicit `other` evidence already requires AI review (or a
+              // missing-evidence denial); a channel policy must not replace it
+              // with display text that conceals the absent execution arguments.
+              !opts?.autoReviewAction || (forcePrompt && opts.autoReviewAction.kind !== 'other')
+                ? toolAutoReviewAction(req.toolName, req.input, req.description)
+                : opts.autoReviewAction,
+            );
+          } finally {
+            if (pendingApprovals.get(requestId) === reviewEntry) pendingApprovals.delete(requestId);
+          }
+          // Cancellation wins over every verdict and mode switch. Root and
+          // descendant turns have separate terminal owners; a normal root
+          // completion must not cancel a still-running background child.
+          if (
+            reviewEntry.settled || closed || !isCurrentHost() || threadId !== reviewThreadId
+            || (descendant
+              ? Boolean(turnId && terminalDescendantTurnIds.has(turnId))
+              : (turnStartGeneration !== reviewTurnGeneration && (!turnId || currentTurnId !== turnId)) || Boolean(turnId && (
+                completedTurnIds.has(turnId) || terminalErroredTurnIds.has(turnId)
+                || turnInterruptOrigins.get(turnId)?.source === 'user-stop'
+              )))
+          ) return 'decline';
           // 热切换收口:reviewAutoAction 是 async,期间 setPermissionMode 可能收紧(Auto→Ask)或
           // 放宽(→Full)。按**最新**档位决策,否则旧 auto 档 allow 会绕过用户刚要求的确认
           // (codex review P1;与已修复的 Pi / Claude 线程同口径)。cast 破 TS 收窄:TS 不建模
@@ -6793,7 +6806,7 @@ export class CodexAgent extends BaseAgent {
             // (审阅器故障已在 resolveAutoReviewDecision 降级成 ask,不会走到这里。)
             return 'decline';
           } else {
-            // Only red-line decisions reach the user and they cannot be remembered.
+            // AI ask decisions reach the user and cannot be remembered.
             // 审阅器故障降级来的 ask 提示一次,让用户知道为何突然开始被问。
             // 用户点「允许」只批准当前这一次,不再重新跑审阅器。
             if (decision.unavailable) {
@@ -6861,11 +6874,11 @@ export class CodexAgent extends BaseAgent {
      *   - resolveAs='allow' (mode 切到 bypass; forcePrompt 仍 fail-closed): decision='accept'
      *   - resolveAs='deny'  (mode 切到 ask/auto 或 close): decision='decline'
      */
-    function dismissAllPending(reason: string, resolveAs: 'allow' | 'deny'): void {
+    function dismissAllPending(reason: string, resolveAs: 'allow' | 'deny', preserveReviewing = false): void {
       if (pendingApprovals.size === 0) return;
       const entries = Array.from(pendingApprovals.entries());
       for (const [requestId, entry] of entries) {
-        if (entry.settled) continue;
+        if (entry.settled || (preserveReviewing && entry.reviewing)) continue;
         entry.settled = true;
         pendingApprovals.delete(requestId);
         // forcePrompt(prompt-each-time 高风险审批)不接受"切到宽松模式"的批量放行——
@@ -7819,26 +7832,38 @@ export class CodexAgent extends BaseAgent {
       if (turnGate === false) return { decision: 'decline' };
       if (turnGate instanceof Promise && !(await turnGate)) return { decision: 'decline' };
       const requestId = params.itemId;
+      const activeChange = activeToolContexts.get(params.itemId);
+      const changes = params.changes ?? (activeChange?.type === 'fileChange' && activeChange.turnId === params.turnId
+        ? activeChange.changes : undefined);
+      // Keep the full patch on the existing user-confirmation surface, but send
+      // only destinations and change kinds to the independent utility reviewer.
+      const changeEvidence = Array.isArray(changes) ? changes.map((change) => {
+        const record = recordFromUnknown(change);
+        const kind = recordFromUnknown(record?.kind);
+        if (typeof record?.path !== 'string' || !record.path.trim()
+          || !['add', 'delete', 'update'].includes(String(kind?.type))) return null;
+        return { path: record.path, kind: { type: kind?.type,
+          ...(typeof kind?.move_path === 'string' ? { move_path: kind.move_path } : {}),
+        } };
+      }) : undefined;
       const decision = await awaitApprovalDecision(params.threadId, params.turnId, requestId, 'fileChange', {
         kind: 'permission',
         requestId,
         toolUseId: params.itemId,
         toolName: 'file_change',
-        input: { grantRoot: params.grantRoot ?? null },
+        input: { grantRoot: params.grantRoot ?? null, ...(changes ? { changes } : {}) },
         title: 'Allow Codex to change files?',
         description: params.reason ?? undefined,
         suggestions: codexSessionApprovalSuggestions(),
         metadata: params.reason ? { reason: params.reason } : undefined,
       }, {
-        // Codex may omit grantRoot for ordinary apply_patch requests. Without a
-        // concrete target the lightweight reviewer cannot classify the write,
-        // but silently declining is surfaced by app-server as "rejected by user"
-        // even though no user interaction happened. In interactive Auto, route
-        // that protocol gap to the ordinary approval UI; unlike forcePrompt this
-        // still lets a pending request follow a switch to Full access. Unattended
-        // policy turns retain their earlier fail-closed branch above.
-        promptInAuto: !params.grantRoot?.trim(),
-        autoReviewAction: { kind: 'file-write', path: params.grantRoot ?? undefined },
+        // Missing target evidence is sent to review as a protocol limitation, never
+        // converted directly into a human prompt or treated as a workspace grant.
+        autoReviewAction: Array.isArray(changes) && changes.length > 0
+          ? changeEvidence?.every(Boolean)
+            ? toolAutoReviewAction('file_change', { grantRoot: params.grantRoot ?? null, changes: changeEvidence })
+            : { kind: 'other' }
+          : { kind: 'file-write', path: params.grantRoot ?? undefined },
         itemId: params.itemId,
       });
       return { decision };
@@ -7891,6 +7916,13 @@ export class CodexAgent extends BaseAgent {
       if (toolDescription) input.toolDescription = toolDescription;
       if (meta?.tool_params_display != null) input.toolParamsDisplay = meta.tool_params_display;
       if (meta?.tool_params != null) input.toolParams = meta.tool_params;
+      else {
+        const matches = matchingActiveMcpTools(params);
+        if (matches.length === 1) {
+          input.toolName ??= matches[0].context.tool;
+          if (matches[0].context.arguments !== undefined) input.toolParams = matches[0].context.arguments;
+        }
+      }
       return input;
     }
 
@@ -8123,6 +8155,12 @@ export class CodexAgent extends BaseAgent {
         {
           forcePrompt:
             turnPolicyForcePrompt || approvalPolicy === 'prompt-each-time',
+          // Display text is not execution evidence. An absent argument payload
+          // must hit the shared missing-evidence denial, never reach AI as a
+          // seemingly complete action made only of server/title/message fields.
+          ...(policyPermissionInput.toolParams === undefined
+            ? { autoReviewAction: { kind: 'other' as const, description: undefined } }
+            : {}),
           ...(toolUseId ? { itemId: toolUseId } : {}),
         },
       );
@@ -8151,8 +8189,8 @@ export class CodexAgent extends BaseAgent {
       if (turnGate === false) return { permissions: {}, scope: 'turn' };
       if (turnGate instanceof Promise && !(await turnGate)) return { permissions: {}, scope: 'turn' };
       const requestId = params.itemId ?? params.turnId;
-      // kind 借用 'commandExecution' 仅为复用其 fail-closed 语义(见 awaitApprovalDecision:无 action /
-      // 无人值守时 decline)——权限升级请求本就该 fail-closed。此处不是命令执行,只是共用同一条兜底路径。
+      // Capability changes share the same decision lifecycle as command approvals.
+      // Auto reviews their complete permission payload rather than inventing a command.
       const decision = await awaitApprovalDecision(params.threadId, params.turnId, requestId, 'commandExecution', {
         kind: 'permission',
         requestId,
@@ -8181,11 +8219,15 @@ export class CodexAgent extends BaseAgent {
       const rec = item as Record<string, unknown>;
       const id = typeof rec.id === 'string' ? rec.id : '';
       if (!id) return null;
+      if (rec.type === 'fileChange') {
+        return { id, ctx: { type: 'fileChange', turnId, changes: rec.changes } };
+      }
       if (rec.type === 'mcpToolCall') {
         return {
           id,
           ctx: {
             type: 'mcpToolCall',
+            arguments: rec.arguments,
             turnId,
             server: typeof rec.server === 'string' ? rec.server : null,
             pluginId:
@@ -8295,7 +8337,7 @@ export class CodexAgent extends BaseAgent {
 
     function classifyToolContext(ctx: ActiveToolContext | undefined): 'ask_user_question' | 'permission' {
       if (!ctx) return 'ask_user_question';
-      if (ctx.type === 'mcpToolCall') return 'permission';
+      if (ctx.type === 'mcpToolCall' || ctx.type === 'fileChange') return 'permission';
       if (ctx.type === 'dynamicToolCall') {
         return isAskUserDynamicTool({ namespace: ctx.namespace ?? '', tool: ctx.tool ?? '' })
           ? 'ask_user_question'
@@ -11730,6 +11772,11 @@ export class CodexAgent extends BaseAgent {
     }
     // ── AgentSessionHandle ──────────────────────────────────────────────────
     const handle: AgentSessionHandle = {
+      reviewAutoPermissionAction: async (action) => {
+        const decision = await reviewAutoAction(action);
+        if (decision.unavailable) autoReviewUnavailableNotice.notify();
+        return decision;
+      },
       get id() { return sdkSessionId ?? '<pending>'; },
       agentKind: 'codex',
       get model() { return mutableModel; },
@@ -11892,7 +11939,7 @@ export class CodexAgent extends BaseAgent {
         const autoReviewIntent = (sendOpts as CodexInternalSendOptions | undefined)?.[
           CODEX_AUTO_REVIEW_INTENT
         ];
-        setAutoReviewIntent(autoReviewIntent ?? message.content);
+        setAutoReviewIntent(autoReviewIntent ?? appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts), { authority: autoReviewContext() });
         assertCurrentHost('turn/start');
         // 本条消息的计划意图:sendOpts.planMode 是点击发送瞬间的快照(排队行透传),
         // 权威于 agent 当前武装态;undefined 走旧语义(消耗武装态)。一次性语义:
@@ -12653,7 +12700,7 @@ export class CodexAgent extends BaseAgent {
             turnId: steeredTurnId,
           });
         }
-        setAutoReviewIntent(message.content);
+        setAutoReviewIntent(appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts));
       },
 
       async requestGracefulStop(stopOpts) {
@@ -12785,6 +12832,7 @@ export class CodexAgent extends BaseAgent {
           // notifications cannot re-arm it before turn/completed arrives.
           turnInterruptOrigins.set(currentTurnId, { source: 'user-stop' });
         }
+        dismissAllPending('turn_interrupted', 'deny');
         if (!currentTurnId) return;
         if (skipIfStaleHost('turn/interrupt')) return;
         // 中断已在进行:收 idle 表,别让 watchdog 在收口窗口里再开一次火。
@@ -12936,7 +12984,7 @@ export class CodexAgent extends BaseAgent {
         // reviewer / 人工降级审批，先 fail-closed 关闭；后续重试按当前路由能力
         // 选择 auto_review 或 user reviewer。
         const allowPending = newMode === 'bypassPermissions';
-        dismissAllPending(`permission_mode_changed_to_${newMode}`, allowPending ? 'allow' : 'deny');
+        dismissAllPending(`permission_mode_changed_to_${newMode}`, allowPending ? 'allow' : 'deny', true);
         const wasAuto = mutablePermissionMode === 'auto';
         const wasBypass = mutablePermissionMode === 'bypassPermissions';
         const wasOpen = wasAuto || wasBypass;

@@ -5872,6 +5872,7 @@
     "weeklyLabel": "週間",
     "modelWeeklyLabel": "{{model}} 週間",
     "usedPercent": "使用済み {{percent}}%",
+    "remainingPercent": "残り {{percent}}%",
     "resetAt": "{{at}} にリセット",
     "noWindows": "クォータ期間のデータはありません",
     "limitRejected": "プランの上限に到達しました。リクエストが拒否される可能性があります",
@@ -8364,7 +8365,8 @@
       "dismissTitle": "この中断通知を閉じる"
     },
     "unreadFailedScheduleBanner": {
-      "text": "完了しなかったスケジュール実行があります。実行履歴を確認してください。"
+      "text": "完了しなかったスケジュール実行があります。実行履歴を確認してください。",
+      "dismissTitle": "過去の失敗通知を閉じる"
     },
     "worktreeRestoreBanner": {
       "text": "このセッションのワークツリーは回収されました（ディレクトリが存在しません）。",
@@ -8722,6 +8724,8 @@
       "duplicateFiles": "同名のファイルが {{count}} 件見つかりました。絶対パスを使用してください",
       "copyFile": "コピー",
       "copyFilePath": "ファイルパスをコピー",
+      "copyLocation": "位置をコピー",
+      "locationCopied": "位置をコピーしました",
       "openWith": "アプリで開く",
       "openWithAppFailed": "選択したアプリで開けませんでした",
       "revealFile": "ファイルの場所を開く",

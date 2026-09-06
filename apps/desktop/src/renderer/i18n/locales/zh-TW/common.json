@@ -5872,6 +5872,7 @@
     "weeklyLabel": "週限",
     "modelWeeklyLabel": "{{model}} 週限",
     "usedPercent": "已用 {{percent}}%",
+    "remainingPercent": "剩餘 {{percent}}%",
     "resetAt": "{{at}} 重置",
     "noWindows": "暫無配額視窗資料",
     "limitRejected": "已觸發套餐限額，請求可能被拒絕",
@@ -8363,7 +8364,8 @@
       "dismissTitle": "關閉此中斷提示"
     },
     "unreadFailedScheduleBanner": {
-      "text": "先前有定時任務未完成，可查看執行記錄。"
+      "text": "先前有定時任務未完成，可查看執行記錄。",
+      "dismissTitle": "關閉歷史失敗提示"
     },
     "worktreeRestoreBanner": {
       "text": "該任務的 worktree 已被回收（目錄不存在）。",
@@ -8721,6 +8723,8 @@
       "duplicateFiles": "找到 {{count}} 個同名檔案，請改用絕對路徑",
       "copyFile": "複製",
       "copyFilePath": "複製檔案路徑",
+      "copyLocation": "複製位置",
+      "locationCopied": "位置已複製",
       "openWith": "開啟方式",
       "openWithAppFailed": "無法用所選應用開啟",
       "revealFile": "開啟檔案所在目錄",

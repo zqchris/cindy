@@ -122,8 +122,11 @@ import {
   createAutoReviewConfirmUndeliveredNotice,
   createAutoReviewUnavailableNotice,
   extractAutoReviewUserIntent,
+  appendAutoReviewUserIntent,
+  composeAutoReviewIntentWithClarification,
   isSystemPermissionDenialReason,
   resolveAutoReviewDecision,
+  toolAutoReviewAction,
   type AutoReviewDecision,
 } from '../shared/auto-review-decision.js';
 import type { ReviewableAction } from '../shared/auto-review.js';
@@ -3178,9 +3181,17 @@ export class PiAgent extends BaseAgent {
     let activeEffortSnapshot = initialEffortSnapshot;
     let mutableEffort: Effort | null = startupEffort ?? null;
     let currentAutoReviewIntent = '';
+    const autoReviewContext = () => activeTurnPermissionPolicy?.autoReviewContext
+      ?? (activeTurnPermissionPolicy?.origin.kind === 'im'
+        ? { requesterAuthority: 'unknown' as const, source: 'direct' as const }
+        : undefined);
+    // Authorization belongs to the accepted input, not the foreground policy's lifetime.
+    let currentAutoReviewAuthority: ReturnType<typeof autoReviewContext> | null;
+    const priorAutoReviewIntent = () => JSON.stringify(currentAutoReviewAuthority ?? null) === JSON.stringify(autoReviewContext() ?? null) ? currentAutoReviewIntent : '';
     const autoReviewDecisionCache = new Map<string, Promise<AutoReviewDecision>>();
-    const setAutoReviewIntent = (content: UserMessage['content']): void => {
+    const setAutoReviewIntent = (content: UserMessage['content'], source = { authority: currentAutoReviewAuthority }): void => {
       currentAutoReviewIntent = extractAutoReviewUserIntent(content);
+      currentAutoReviewAuthority = source.authority && { ...source.authority };
       autoReviewDecisionCache.clear();
       // 每条新用户消息 = 新一轮,提示重新武装。ErrorBanner 那份只活到下一条非 error 事件
       // (renderer 的 handleStreamEvent 会清 recoverableError),所以「整个会话只说一次」
@@ -3261,6 +3272,7 @@ export class PiAgent extends BaseAgent {
       opts?: { dismissPending?: boolean; surfaceLost?: boolean },
     ): void => {
       activeTurnPermissionPolicy = null;
+      if (opts?.surfaceLost) autoReviewDecisionCache.clear();
       if (opts?.dismissPending) {
         dismissAllPendingPrompts(reason, 'deny', { surfaceLost: opts.surfaceLost === true });
       }
@@ -3283,9 +3295,12 @@ export class PiAgent extends BaseAgent {
       // instead of letting a reviewer decision bridge that transaction window.
       if (directoryPermissionsPendingPersistence()) {
         return Promise.resolve({
-          verdict: 'ask',
+          verdict: 'block',
           reason: 'Directory permissions are still being persisted.',
         });
+      }
+      if (currentAutoReviewAuthority === null) {
+        return Promise.resolve({ verdict: 'block', reason: 'User request was not accepted; retry with the current request.' });
       }
       const directoryGeneration = autoReviewDirectoryGeneration;
       const request = {
@@ -3294,6 +3309,7 @@ export class PiAgent extends BaseAgent {
         providerId: mutableProviderId,
         model: mutableModel,
         userIntent: currentAutoReviewIntent,
+        ...(currentAutoReviewAuthority ? { authorizationContext: currentAutoReviewAuthority } : {}),
         action,
         workspaceRoots: [opts.workingDir, ...mutableExtraDirs, ...mutableWritableDirs],
         writableRoots: [opts.workingDir, ...mutableWritableDirs],
@@ -3306,12 +3322,14 @@ export class PiAgent extends BaseAgent {
         autoReviewDecisionCache.set(cacheKey, pending);
       }
       return pending.then((decision) => (
-        directoryGeneration === autoReviewDirectoryGeneration
+        autoReviewDecisionCache.get(cacheKey) !== pending
+          ? { verdict: 'block', reason: 'User instructions changed; retry against the latest authorization.' }
+          : directoryGeneration === autoReviewDirectoryGeneration
           && !directoryPermissionsPendingPersistence()
           ? decision
           : {
-              verdict: 'ask',
-              reason: 'Directory permissions changed while this action was under review.',
+              verdict: 'block',
+              reason: 'Directory permissions changed; retry with the current scope.',
             }
       ));
     };
@@ -3584,6 +3602,14 @@ export class PiAgent extends BaseAgent {
       // otherwise the entry is filed under the new generation and the retry gate
       // below never opens again.
       const offeredUnderGeneration = interactionResolverGeneration;
+      const offeredInAuto = permissionMode === 'auto';
+      const offeredWhileClosed = closed;
+      const offeredAfterProcessExit = piProcessExited;
+      // Detached runs outlive the root, but an Auto verdict must not straddle
+      // its teardown. Reuse the durable unanswered path without stopping later
+      // offers that begin under the already-detached lifecycle.
+      const autoReviewOfferExpired = (): boolean => offeredInAuto
+        && (closed !== offeredWhileClosed || piProcessExited !== offeredAfterProcessExit);
       piSubagentApprovalRequests.add(key);
       if (turnChangeCapture) {
         let toolName = '';
@@ -3797,12 +3823,9 @@ export class PiAgent extends BaseAgent {
         });
       };
       const resolveConfirmation = async (): Promise<PiPermissionResolution | null> => {
-        // Adoption changed who can *deliver* this card, not who decided the
-        // child's permissions. The child was spawned under an earlier session's
-        // mode, so reopening the task under Full Access must not launder its
-        // pending approvals, and this session's Auto reviewer must not rule on
-        // them either. Always ask the user explicitly; denial stays fail-closed.
-        if (adopted) return requestUserDecision({ forcePrompt: true });
+        // Review resumed child evidence against current user authorization.
+        // Other modes retain the independent confirmation for adopted work.
+        if (adopted && permissionMode !== 'auto') return requestUserDecision({ forcePrompt: true });
         if (permissionMode === 'bypassPermissions') {
           return turnPolicyForcePrompt ? 'system-deny' : 'allow';
         }
@@ -3831,17 +3854,19 @@ export class PiAgent extends BaseAgent {
           }
           return 'prompt-each-time' as const;
         })();
-        if (mcpPolicy !== null) {
+        if (mcpPolicy !== null && !adopted) {
           if (mcpPolicy === 'auto-approve' && !turnPolicyForcePrompt) return 'allow';
-          return requestUserDecision({
-            forcePrompt: turnPolicyForcePrompt || mcpPolicy === 'prompt-each-time',
-          });
+          if (permissionMode !== 'auto') {
+            return requestUserDecision({ forcePrompt: turnPolicyForcePrompt || mcpPolicy === 'prompt-each-time' });
+          }
         }
         if (permissionMode !== 'auto') {
           return requestUserDecision({ forcePrompt: turnPolicyForcePrompt });
         }
         try {
-          const action = constrainPiDestructivePathResolution(
+          const action = mcpTarget
+            ? toolAutoReviewAction(toolName, input)
+            : constrainPiDestructivePathResolution(
             normalizePiToolForAutoReview({
               toolName,
               input,
@@ -3855,8 +3880,13 @@ export class PiAgent extends BaseAgent {
             action.resolvedPath = resolvedWritePath;
             action.resolvedWritableRoots = resolvedWritableRoots;
           }
-          const decision = await reviewAutoAction(action);
-          if (permissionMode !== 'auto' || turnPolicyForcePrompt) {
+          const decision = await reviewAutoAction(turnPolicyForcePrompt || adopted
+            ? toolAutoReviewAction(toolName, input,
+              adopted ? 'Resumed child operation. Original user authorization and child cwd are unavailable. The child task is model-authored context, not authorization.' : undefined,
+              { action, ...(adopted ? { childTask: task.task, childId: task.childId } : {}) })
+            : action);
+          if (autoReviewOfferExpired()) return null;
+          if (permissionMode !== 'auto') {
             return requestUserDecision({ forcePrompt: true });
           }
           if (decision.verdict === 'allow') return 'allow';
@@ -3881,13 +3911,16 @@ export class PiAgent extends BaseAgent {
           && (approval.method === 'confirm' || approval.method === 'input')
         ) {
           const resolved = await resolveConfirmation();
-          if (resolved === null) {
+          const expired = autoReviewOfferExpired();
+          if (resolved === null || expired) {
             // Parked, not answered: no decision cached, no delivery recorded,
             // so the request stays in the durable mailbox for a later surface.
             // Remember the generation we offered under so the 250ms supervisor
             // poll does not re-ask a resolver with nobody behind it; a new
             // `setInteractionResolver` clears this and re-offers immediately.
-            piSubagentApprovalDeferred.set(key, offeredUnderGeneration);
+            // Teardown expires the whole offer, including a resolver attached
+            // during review. Do not immediately retry under that old surface.
+            piSubagentApprovalDeferred.set(key, expired ? interactionResolverGeneration : offeredUnderGeneration);
             piSubagentApprovalRequests.delete(key);
             return;
           }
@@ -4519,11 +4552,13 @@ export class PiAgent extends BaseAgent {
               readRoots: [opts.workingDir, ...mutableExtraDirs, ...mutableWritableDirs],
               writableRoots: [opts.workingDir, ...mutableWritableDirs],
               reviewAutoAction,
+              recordUserClarification: (question, answer) => setAutoReviewIntent(composeAutoReviewIntentWithClarification(currentAutoReviewIntent, [{ question, answer }])),
               notifyAutoReviewUnavailable: () => autoReviewUnavailableNotice.notify(),
               notifyAutoReviewConfirmUndelivered: () => autoReviewConfirmUndeliveredNotice.notify(),
               registeredMcpServerNames,
               registerPendingPrompt,
               isAccountBoundaryTornDown: () => accountBoundaryTeardown,
+              isPermissionContextClosed: () => closed || piProcessExited || proc.isClosed || accountBoundaryTeardown,
               turnPermissionPolicy: activeTurnPermissionPolicy,
               sessionId: opts.sessionId ?? '',
               workingDir: opts.workingDir ?? '',
@@ -5732,6 +5767,11 @@ export class PiAgent extends BaseAgent {
     };
 
     const handle: AgentSessionHandle = {
+      reviewAutoPermissionAction: async (action) => {
+        const decision = await reviewAutoAction(action);
+        if (decision.unavailable) autoReviewUnavailableNotice.notify();
+        return decision;
+      },
       // getter 而非固定值:setModel / commitRewindFiles 会更新闭包里的 mutableModel /
       // sdkSessionId,Session.model / Session.sdkSessionId 直读这两个 handle 属性 ——
       // 固定复制会让切模后 Orca listWorkers 仍报旧模型、rewind 后宿主仍读旧 session 文件
@@ -5782,6 +5822,7 @@ export class PiAgent extends BaseAgent {
         activeTurnPermissionPolicy = sendOpts?.turnPermissionPolicy ?? null;
         let providerAccepted = false;
         let promptRequestStarted = false;
+        let reviewIntentUpdated = false;
         try {
           if (reviewMode) {
             await assertReviewMessageContentPaths(message.content, opts.workingDir, reviewReadGrants);
@@ -5789,7 +5830,8 @@ export class PiAgent extends BaseAgent {
           let { text, images } = await buildPiPrompt(message, { remote });
           rejectIfCancelled(sendOpts, 'send');
           assertImageInputSupported(images);
-          setAutoReviewIntent(message.content);
+          setAutoReviewIntent(appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts), { authority: autoReviewContext() });
+          reviewIntentUpdated = true;
           const managedPackageRoute = await routeManagedPackageCommand(
             text,
             images.length,
@@ -5977,7 +6019,14 @@ export class PiAgent extends BaseAgent {
         } catch (err) {
           // 只在 Provider 尚未接受本轮时回滚。接受后的 transcript 回调失败不代表
           // turn 没启动；此时恢复旧 policy 会让正在运行的新 turn 用错安全边界。
-          if (!providerAccepted) activeTurnPermissionPolicy = previousTurnPermissionPolicy;
+          if (!providerAccepted) {
+            activeTurnPermissionPolicy = previousTurnPermissionPolicy;
+            if (reviewIntentUpdated) {
+              currentAutoReviewIntent = '';
+              currentAutoReviewAuthority = null;
+              autoReviewDecisionCache.clear();
+            }
+          }
           // Before proc.request the turn is known not to have reached Pi. Once
           // request starts, a transport/write/envelope failure cannot prove
           // whether Pi accepted the prompt; only success:false is an explicit
@@ -6006,7 +6055,7 @@ export class PiAgent extends BaseAgent {
         let { text, images } = await buildPiPrompt(message, { remote });
         rejectIfCancelled(sendOpts, 'steer');
         assertImageInputSupported(images);
-        setAutoReviewIntent(message.content);
+        setAutoReviewIntent(appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts));
         const managedPackageRoute = await routeManagedPackageCommand(
           text,
           images.length,
@@ -6120,6 +6169,7 @@ export class PiAgent extends BaseAgent {
       async requestGracefulStop(): Promise<void> {
         if (proc.isClosed) throw new Error('No active Pi turn to stop');
         const hostAbortToken = markPiHostAbortRequested(ctx);
+        autoReviewDecisionCache.clear();
         dismissAllPendingPrompts('turn_aborted', 'deny');
         let resp: Awaited<ReturnType<typeof proc.request>>;
         try {
@@ -6138,6 +6188,7 @@ export class PiAgent extends BaseAgent {
       async abort(): Promise<void> {
         if (proc.isClosed) return;
         const hostAbortToken = markPiHostAbortRequested(ctx);
+        autoReviewDecisionCache.clear();
         // 先把等待中的调用 fail-closed 唤醒；即使 abort RPC 失败，也不能让用户刚拒绝/
         // 停止的那次工具继续等一张已失效的卡。policy 仅在 Pi 确认接受 abort 后清空，
         // RPC 失败时继续保留，防止仍在运行的 turn 失去渠道安全边界。
@@ -6872,6 +6923,7 @@ export class PiAgent extends BaseAgent {
       readRoots: string[];
       writableRoots: string[];
       reviewAutoAction: (action: ReviewableAction) => Promise<AutoReviewDecision>;
+      recordUserClarification: (question: string, answer: string) => void;
       /** 审阅器不可用时的会话级一次性提示;去重与重置由会话侧持有(issue #1574)。 */
       notifyAutoReviewUnavailable: () => void;
       /** 故障确认没送到 / 被系统收口时纠正「用户拒绝」归因。 */
@@ -6888,6 +6940,7 @@ export class PiAgent extends BaseAgent {
        * before the await.
        */
       isAccountBoundaryTornDown: () => boolean;
+      isPermissionContextClosed: () => boolean;
       sessionId: string;
       workingDir: string;
       remote: boolean;
@@ -6913,8 +6966,8 @@ export class PiAgent extends BaseAgent {
       ) => () => void;
       /**
        * 本轮 host 权限策略(个人微信 / Telegram 群等);无策略为 null。命中
-       * forceConfirmToolCall 的调用必须走用户确认,压过 MCP auto-approve 与 auto
-       * 档 Auto-Review 的 allow(§7.4 优先级)。策略抛异常按"必须询问"收口。
+       * forceConfirmToolCall 命中或策略异常时不得静态免审；Auto 交 AI，
+       * 其它档位保留原渠道确认策略。
        */
       turnPermissionPolicy: TurnPermissionPolicy | null;
     },
@@ -7031,12 +7084,38 @@ export class PiAgent extends BaseAgent {
           ) {
             throw new Error('Invalid Cindy Pi extension request.');
           }
-          const approved = await new Promise<boolean>((resolve) => {
+          if (context.isPermissionContextClosed()) return;
+          let autoDecision: AutoReviewDecision | undefined;
+          if (context.permissionMode === 'auto') {
+            let unregister = () => {};
+            const cancelled = new Promise<AutoReviewDecision>((resolve) => {
+              unregister = context.registerPendingPrompt(`${id}:pi-extension-review`, {
+                forcePrompt: true,
+                settle: () => resolve({ verdict: 'block', reason: 'The pending operation was cancelled.' }),
+              });
+            });
+            try {
+              autoDecision = await Promise.race([
+                context.reviewAutoAction(toolAutoReviewAction('cindy_pi_extension', { action, source })),
+                cancelled,
+              ]);
+            } finally {
+              unregister();
+            }
+          }
+          if (autoDecision?.verdict === 'block' || context.isPermissionContextClosed()) {
+            proc.send({ type: 'extension_ui_response', id, cancelled: true });
+            return;
+          }
+          if (autoDecision?.unavailable) context.notifyAutoReviewUnavailable();
+          const approved = (autoDecision?.verdict === 'allow' && getPermissionCtx().permissionMode === 'auto')
+            || await new Promise<boolean>((resolve) => {
             if (!context.resolver) {
               this.deps.logger.warn('pi extension mutation has no interaction resolver', {
                 action,
                 sessionId: context.sessionId,
               });
+              if (autoDecision?.unavailable) context.notifyAutoReviewConfirmUndelivered();
               resolve(false);
               return;
             }
@@ -7050,16 +7129,18 @@ export class PiAgent extends BaseAgent {
             };
             unregister = context.registerPendingPrompt(`${id}:pi-extension-mutation`, {
               forcePrompt: true,
+              unavailableHandoff: autoDecision?.unavailable,
               settle: (resolveAs) => finish(resolveAs === 'allow'),
             });
             Promise.resolve()
               .then(() =>
-                context.resolver!({
-                  kind: 'permission',
-                  requestId: `${id}:pi-extension-mutation`,
-                  toolName: 'cindy_pi_extension',
-                  input: { action, source },
-                }),
+                context.resolver!(autoDecision?.unavailable
+                  ? annotatePermissionRequestForUnavailableReview({
+                    kind: 'permission', requestId: `${id}:pi-extension-mutation`,
+                    toolName: 'cindy_pi_extension', input: { action, source },
+                  })
+                  : { kind: 'permission', requestId: `${id}:pi-extension-mutation`,
+                    toolName: 'cindy_pi_extension', input: { action, source } }),
               )
               .then((decision) => {
                 finish(decision.kind === 'permission' && decision.behavior === 'allow');
@@ -7072,7 +7153,7 @@ export class PiAgent extends BaseAgent {
                 finish(false);
               });
           });
-          if (!approved) {
+          if (!approved || context.isPermissionContextClosed()) {
             proc.send({ type: 'extension_ui_response', id, cancelled: true });
             return;
           }
@@ -7271,12 +7352,12 @@ export class PiAgent extends BaseAgent {
         /* keep defaults */
       }
       if (
-        (toolName === 'read' || toolName === 'grep' || toolName === 'find' || toolName === 'ls' || toolName === 'bash')
+        (toolName === 'read' || toolName === 'grep' || toolName === 'find' || toolName === 'ls' || toolName === 'bash' || toolName === 'powershell')
         && resolvedCredentialPaths === undefined
       ) {
-        // Readonly calls and bash input redirects only reach Host with bridge-supplied
+        // Readonly calls and shell input redirects only reach Host with bridge-supplied
         // canonical-path evidence. Missing evidence means an old or malformed bridge,
-        // not a safe read; require explicit consent instead of trusting a link name.
+        // not a safe read; include this uncertainty in the AI review evidence.
         resolvedCredentialPaths = null;
       }
       if ((toolName === 'write' || toolName === 'edit') && resolvedWritePath === undefined) {
@@ -7480,36 +7561,17 @@ export class PiAgent extends BaseAgent {
           sendPermissionResolution('allow');
           return;
         }
-        // Model-authored extension-store mutations never inherit Full Access
-        // or Auto-Review approval. Only the deterministic whole-command route
-        // handles an exact user-authored `pi install/update/remove` instruction
-        // without this second prompt; every tool call must obtain a real user
-        // decision and fails closed if the confirmation surface is unavailable.
-        if (requiresIndependentUserConfirmation) {
+        // Auto reviews extension mutations against the user's authorization.
+        // Other modes retain the existing independent confirmation domain.
+        if (requiresIndependentUserConfirmation && permissionMode !== 'auto') {
           sendPermissionResolution(await requestUserConfirmation({
             forcePrompt: true,
             requireExplicitDecision: true,
           }));
           return;
         }
-        // 桥接 MCP 工具走 host 审批策略,**不进 Auto-review 灰区** —— 与 Claude Code /
-        // Codex 同一份真源(`getDesktopMcpToolApprovalPolicy`)。
-        //
-        // 为什么不能交模型判:auto-review 是安全分类器,而"要不要开协同团队 / 该不该用
-        // 某个 MCP 工具"是做法选择,不是安全判断。实测把 `mcp__cindy_orca__start_team`
-        // 送去审阅时,模型会按 prompt 里"有更安全替代方案就 block"的字面判成"这点小事
-        // 不必开团队"→ block 对用户静默 → 冒泡回 bridge 就是
-        // "User denied this tool call via Cindy",团队永远建不起来且没有任何弹窗。
-        // 同一个第一方 MCP 在三个 harness 下必须给出同一个答案(base-agent.ts
-        // getMcpToolApprovalPolicy 注释),此前 Pi 是唯一没接这条的。
-        //
-        // 位置与 CC 一致:策略判定在档位分支**之前** —— auto-approve 的第一方 server 在
-        // ask 档也不弹窗(CC claude-code/index.ts 的 mcpApprovalPolicy 分支同义)。
-        //
-        // 返回 null = 不查策略,**回落原有权限链**(ask 档弹窗 / auto 档进灰区审阅),行为与
-        // 接策略之前完全一致:host 没提供 classifier,或工具名对不上任何本会话已注册的
-        // server(认不出归属就不敢按第一方放行)。策略抛错或返回非法值则不回落 ——
-        // 那是策略本身故障,按 prompt-each-time fail-closed 收口。
+        // Trusted MCP shortcuts remain local. Other Auto actions are reviewed
+        // with their real identity, arguments and execution evidence.
         const mcpPolicy = ((): 'auto-approve' | 'prompt' | 'prompt-each-time' | null => {
           const classifier = this.deps.getMcpToolApprovalPolicy;
           if (!classifier) return null;
@@ -7535,7 +7597,7 @@ export class PiAgent extends BaseAgent {
           }
           return 'prompt-each-time';
         })();
-        if (mcpPolicy !== null) {
+        if (mcpPolicy !== null && (mcpPolicy === 'auto-approve' && !turnPolicyForcePrompt || permissionMode !== 'auto')) {
           // Pi 的权限门只有放行/拒绝两态,没有会话级持久化规则,因此 prompt 与
           // prompt-each-time 在这里收敛成同一个动作:每次都问用户。本轮策略命中时
           // auto-approve 也不放行 —— 渠道安全契约压过第一方 MCP 自动批准(§7.4)。
@@ -7555,7 +7617,9 @@ export class PiAgent extends BaseAgent {
           return;
         }
         try {
-          const action = constrainPiDestructivePathResolution(
+          const action = mcpTarget || requiresIndependentUserConfirmation
+            ? toolAutoReviewAction(toolName, input, hostApprovalPresentation?.description)
+            : constrainPiDestructivePathResolution(
             normalizePiToolForAutoReview({
               toolName,
               input,
@@ -7570,7 +7634,9 @@ export class PiAgent extends BaseAgent {
             action.resolvedPath = resolvedWritePath;
             action.resolvedWritableRoots = resolvedWritableRoots;
           }
-          const decision = await reviewAutoAction(action);
+          const decision = await reviewAutoAction(turnPolicyForcePrompt
+            ? toolAutoReviewAction(toolName, input, hostApprovalPresentation?.description, action)
+            : action);
           // 权限热切换:reviewAutoAction 是 async 的,期间用户可能改档。按**最新**档位收口,
           // 不能用进入审查前捕获的旧 auto 档直接放行(Pi 明确支持热切换,codex review P1):
           //   - 已收紧到 ask(或其它非 auto/bypass)→ 破坏性调用即便 verdict=allow 也必须走
@@ -7579,7 +7645,9 @@ export class PiAgent extends BaseAgent {
           //   - 仍是 auto → 按本次审查 verdict 收口(下方原逻辑)。
           const modeAfterReview = getPermissionCtx().permissionMode;
           if (modeAfterReview === 'bypassPermissions') {
-            sendPermissionResolution(turnPolicyForcePrompt ? 'system-deny' : 'allow');
+            sendPermissionResolution(requiresIndependentUserConfirmation
+              ? await requestUserConfirmation({ forcePrompt: true, requireExplicitDecision: true })
+              : turnPolicyForcePrompt ? 'system-deny' : 'allow');
             return;
           }
           if (modeAfterReview !== 'auto') {
@@ -7588,32 +7656,14 @@ export class PiAgent extends BaseAgent {
             sendPermissionResolution(await requestUserConfirmation({ forcePrompt: true }));
             return;
           }
-          // 本轮策略命中:压过 Auto-Review 的 allow / block,一律走渠道确认(forcePrompt)。
-          if (turnPolicyForcePrompt) {
-            sendPermissionResolution(await requestUserConfirmation({ forcePrompt: true }));
-            return;
-          }
           if (decision.verdict === 'ask') {
             // 审阅器故障降级来的 ask 提示一次:用户需要知道自己为何突然开始被问,
             // 否则 Auto 档看起来像坏了。模型判定的 ask 不提示(那是正常工作)。
             if (decision.unavailable) notifyAutoReviewUnavailable();
-            // policy turn + auto 的灰区语义对齐 Codex:只有渠道 policy 明确命中的调用
-            // 才打扰 owner；普通 Auto-Review ask 直接 fail-closed，不再额外弹微信确认。
-            // 无 policy 的 Desktop auto 会话维持既有逐次确认行为。
-            //
-            // **故障降级(unavailable)例外**:上面刚告诉用户"已转由你确认",若这里仍按
-            // policy 静默拒绝,提示与行为就自相矛盾 —— 用户看到可接管的说明却没有确认
-            // 入口,操作照样被拒(PR #2474 review)。故障不是"模型判定该问",而是基础
-            // 设施失灵,用户有权亲自决定,所以走真实确认。
-            const askNeedsUserDecision = decision.unavailable || !turnPermissionPolicy;
-            sendPermissionResolution(
-              askNeedsUserDecision
-                ? await requestUserConfirmation({
-                    forcePrompt: true,
-                    unavailableHandoff: decision.unavailable === true,
-                  })
-                : 'system-deny',
-            );
+            sendPermissionResolution(await requestUserConfirmation({
+              forcePrompt: true,
+              unavailableHandoff: decision.unavailable === true,
+            }));
             return;
           }
           if (decision.verdict === 'block') {
@@ -7715,6 +7765,7 @@ export class PiAgent extends BaseAgent {
           }
           const answer = decision.answers[question];
           if (method === 'confirm') {
+            if (answer === uiStrings.confirm || answer === uiStrings.cancel) context.recordUserClarification(question, answer);
             proc.send({
               type: 'extension_ui_response',
               id,
@@ -7730,6 +7781,7 @@ export class PiAgent extends BaseAgent {
             proc.send({ type: 'extension_ui_response', id, cancelled: true });
             return;
           }
+          context.recordUserClarification(question, answer);
           proc.send({ type: 'extension_ui_response', id, value: answer });
         })
         .catch((error) => {

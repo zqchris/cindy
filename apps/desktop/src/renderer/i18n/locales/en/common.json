@@ -5874,6 +5874,7 @@
     "weeklyLabel": "Weekly",
     "modelWeeklyLabel": "{{model}} weekly",
     "usedPercent": "Used {{percent}}%",
+    "remainingPercent": "Remaining {{percent}}%",
     "resetAt": "Resets {{at}}",
     "noWindows": "No quota window data available",
     "limitRejected": "Plan limit reached; requests may be rejected",
@@ -8370,7 +8371,8 @@
       "dismissTitle": "Dismiss this interruption notice"
     },
     "unreadFailedScheduleBanner": {
-      "text": "Some scheduled runs did not finish. Check the run history."
+      "text": "Some scheduled runs did not finish. Check the run history.",
+      "dismissTitle": "Dismiss past failure notice"
     },
     "worktreeRestoreBanner": {
       "text": "This session's worktree has been cleaned up (directory missing).",
@@ -8728,6 +8730,8 @@
       "duplicateFiles": "Found {{count}} files with the same name, please use an absolute path",
       "copyFile": "Copy",
       "copyFilePath": "Copy file path",
+      "copyLocation": "Copy Location",
+      "locationCopied": "Location copied",
       "openWith": "Open with",
       "openWithAppFailed": "Couldn't open with the selected app",
       "revealFile": "Reveal in folder",

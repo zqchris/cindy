@@ -135,9 +135,11 @@ import {
   createAutoReviewConfirmUndeliveredNotice,
   createAutoReviewUnavailableNotice,
   extractAutoReviewUserIntent,
+  appendAutoReviewUserIntent,
   isAutoReviewUnavailableMetadata,
   isSystemPermissionDenialReason,
   resolveAutoReviewDecision,
+  toolAutoReviewAction,
   type AutoReviewDecision,
 } from '../shared/auto-review-decision.js';
 import type { ReviewableAction } from '../shared/auto-review.js';
@@ -2162,20 +2164,9 @@ export class ClaudeCodeAgent extends BaseAgent {
             : 'This downstream source was not selected.',
         };
       }
-      // 没接 resolver → 普通档与 MCP 工具继续 fail-closed；Auto 的内置工具例外，
-      // 因为 allow/block 可以由本地规则或轻量 reviewer 完成，并不需要 UI。只有最终
-      // `ask` 才会落到 dispatchInteraction，在无 resolver 时自然 deny。
-      // 正常流程里 Session 构造时**必定**注入 resolver(见 session.ts:
-      // setInteractionResolver, 且 host 没接 listener 时该 resolver 自身返回 deny),
-      // 故这里 interactionResolver 为 null 只可能是 misconfiguration / 裸 handle 直用。
-      // 此时对已知只读内省工具(Read/Glob/Grep/...)放行, 对会改文件 / 跑命令 / 发外部
-      // 消息的工具及一切未知工具一律 deny —— 不再依赖 SDK permissionMode 兜底。
-      //
-      // 这道闸必须在 MCP 审批策略**之前**: host 策略描述的是"这个工具值不值得打扰
-      // 用户", 不代表"没有用户在场也可以跑"。裸 handle 场景下没有任何人能撤销误判,
-      // 可信 MCP 同样落到 deny。
-      const canReviewWithoutUi =
-        mutablePermissionMode === 'auto' && !toolName.startsWith('mcp__');
+      // Auto can resolve allow/block without a UI. Other modes retain the
+      // existing fail-closed behavior when no interaction surface is attached.
+      const canReviewWithoutUi = mutablePermissionMode === 'auto';
       if (!interactionResolver && !canReviewWithoutUi) {
         if (isReadOnlyClaudeTool(toolName)) {
           return { behavior: 'allow', updatedInput: input };
@@ -2188,16 +2179,17 @@ export class ClaudeCodeAgent extends BaseAgent {
       const turnPolicyForcePrompt = forceTurnConfirmation(toolName, input);
       const mcpApprovalPolicy = classifyMcpApprovalPolicy(toolName, input);
       const hostApprovalPresentation = mcpApprovalPresentation(toolName, input);
-      let forcePrompt = turnPolicyForcePrompt;
+      let forcePrompt = mutablePermissionMode !== 'auto' && turnPolicyForcePrompt;
       let unavailableHandoff = false;
       let reviewedWritePath: string | null | undefined;
       let executionInput = input;
-      const builtinReviewAction = toolName.startsWith('mcp__')
-        ? undefined
-        : normalizeBuiltinToolForAutoReview(toolName, input);
+      const normalizedAction = normalizeBuiltinToolForAutoReview(toolName, input);
+      const builtinReviewAction = normalizedAction.kind === 'other'
+        ? toolAutoReviewAction(toolName, input, hostApprovalPresentation?.description)
+        : normalizedAction;
       const directorySensitivePermission = builtinReviewAction?.kind === 'read'
         || builtinReviewAction?.kind === 'file-write';
-      if (mutablePermissionMode === 'auto' && !toolName.startsWith('mcp__')) {
+      if (mutablePermissionMode === 'auto' && (mcpApprovalPolicy !== 'auto-approve' || turnPolicyForcePrompt)) {
         const workspaceRoots = [opts.workingDir, ...mutableExtraDirs, ...mutableWritableDirs].filter(
           (d): d is string => typeof d === 'string' && d.length > 0,
         );
@@ -2219,17 +2211,16 @@ export class ClaudeCodeAgent extends BaseAgent {
                 resolveClaudeWritableRoots(writableRoots),
               ]);
           reviewedWritePath = resolvedPath;
-          // A grant revoked while realpath was pending cannot be evaluated against
-          // the old roots snapshot. Keep the canonical target, but require consent.
+          // The old roots are no longer authoritative. Retry against the new scope.
           if (resolutionDirectoryGeneration !== autoReviewDirectoryGeneration) {
-            forcePrompt = true;
+            return { behavior: 'deny', message: 'Directory permissions changed; retry with the current scope.' };
           }
           action.resolvedPath = reviewedWritePath;
           action.resolvedWritableRoots = resolvedWritableRoots;
           executionInput = bindClaudeFileWriteTarget(toolName, input, reviewedWritePath);
         }
         const autoDecision = await reviewAutoAction(
-          action,
+          turnPolicyForcePrompt ? toolAutoReviewAction(toolName, input, hostApprovalPresentation?.description, action) : action,
           workspaceRoots,
           writableRoots,
           opts.remoteHostId ? 'linux' : process.platform,
@@ -2427,6 +2418,13 @@ export class ClaudeCodeAgent extends BaseAgent {
     let mutableAutoReviewCredentialMode = effectiveCredentialMode;
     let nativeAutoReviewUnavailable = false;
     let currentAutoReviewIntent = '';
+    const autoReviewContext = () => activeTurnPermissionPolicy?.autoReviewContext
+      ?? (activeTurnPermissionPolicy?.origin.kind === 'im'
+        ? { requesterAuthority: 'unknown' as const, source: 'direct' as const }
+        : undefined);
+    // Authorization belongs to the accepted input, not the foreground policy's lifetime.
+    let currentAutoReviewAuthority: ReturnType<typeof autoReviewContext>;
+    const priorAutoReviewIntent = () => JSON.stringify(currentAutoReviewAuthority ?? null) === JSON.stringify(autoReviewContext() ?? null) ? currentAutoReviewIntent : '';
     const autoReviewDecisionCache = new Map<string, Promise<AutoReviewDecision>>();
     // Claude's native OAuth Auto classifier bypasses canUseTool entirely. Once a host MCP
     // is registered, that would also bypass Cindy's trusted-server and prompt policies,
@@ -2442,8 +2440,9 @@ export class ClaudeCodeAgent extends BaseAgent {
       // bypasses canUseTool. Use the scope frozen into the active Query: after revoke,
       // that Query still carries its broader directory allowlist.
       && !activeQueryHasDirectoryGrants;
-    const setAutoReviewIntent = (content: UserMessage['content']): void => {
+    const setAutoReviewIntent = (content: UserMessage['content'], source = { authority: currentAutoReviewAuthority }): void => {
       currentAutoReviewIntent = extractAutoReviewUserIntent(content);
+      currentAutoReviewAuthority = source.authority && { ...source.authority };
       autoReviewDecisionCache.clear();
     // 每条新用户消息 = 新一轮,提示重新武装。ErrorBanner 那份只活到下一条非 error 事件
     // (renderer 的 handleStreamEvent 会清 recoverableError),所以「整个会话只说一次」
@@ -2490,6 +2489,7 @@ export class ClaudeCodeAgent extends BaseAgent {
         providerId: mutableProviderId,
         model: mutableModel,
         userIntent: currentAutoReviewIntent,
+        ...(currentAutoReviewAuthority ? { authorizationContext: currentAutoReviewAuthority } : {}),
         action,
         workspaceRoots,
         writableRoots,
@@ -2503,11 +2503,13 @@ export class ClaudeCodeAgent extends BaseAgent {
         );
       if (!cached) autoReviewDecisionCache.set(key, pending);
       return pending.then((decision) => (
-        directoryGeneration === autoReviewDirectoryGeneration
+        autoReviewDecisionCache.get(key) !== pending
+          ? { verdict: 'block', reason: 'User instructions changed; retry against the latest authorization.' }
+          : directoryGeneration === autoReviewDirectoryGeneration
           ? decision
           : {
-              verdict: 'ask',
-              reason: 'Directory permissions changed while this action was under review.',
+              verdict: 'block',
+              reason: 'Directory permissions changed; retry with the current scope.',
             }
       ));
     };
@@ -3385,10 +3387,8 @@ export class ClaudeCodeAgent extends BaseAgent {
                   : 'This downstream source was not selected.',
               };
             }
-            // 没接 resolver 时，Auto 的内置工具仍可由本地规则/轻量 reviewer 完成
-            // allow 或 block；只有真正 ask 才需要 UI。非 Auto 与 MCP 保持 fail-closed。
-            const canReviewRemoteWithoutUi =
-              mutablePermissionMode === 'auto' && !remoteToolName.startsWith('mcp__');
+            // Auto allow/block do not need UI, including MCP operations.
+            const canReviewRemoteWithoutUi = mutablePermissionMode === 'auto';
             if (!interactionResolver && !canReviewRemoteWithoutUi) {
               if (isReadOnlyClaudeTool(remoteToolName)) {
                 return { kind: 'permission', behavior: 'allow' };
@@ -3416,24 +3416,23 @@ export class ClaudeCodeAgent extends BaseAgent {
               remoteToolName,
               params.input ?? {},
             );
-            let remoteForcePrompt = remoteTurnPolicyForcePrompt;
+            let remoteForcePrompt = mutablePermissionMode !== 'auto' && remoteTurnPolicyForcePrompt;
             let remoteUnavailableHandoff = false;
             if (
               mutablePermissionMode === 'auto'
-              && remoteToolName
-              && !remoteToolName.startsWith('mcp__')
+              && (remoteMcpPolicy !== 'auto-approve' || remoteTurnPolicyForcePrompt)
             ) {
-              const action = normalizeBuiltinToolForAutoReview(
-                remoteToolName,
-                params.input ?? {},
-              );
+              const normalizedAction = normalizeBuiltinToolForAutoReview(remoteToolName, params.input ?? {});
+              const action = normalizedAction.kind === 'other'
+                ? toolAutoReviewAction(remoteToolName, params.input ?? {}, remoteHostApprovalPresentation?.description)
+                : normalizedAction;
               if (action.kind === 'exec') action.destructivePathResolution = 'unavailable';
               // The controller cannot prove a path on the SSH filesystem. Mark
               // structured writes unresolved so shared review never grants them
               // from a lexical prefix alone.
               if (action.kind === 'file-write') action.resolvedPath = null;
               const autoDecision = await reviewAutoAction(
-                action,
+                remoteTurnPolicyForcePrompt ? toolAutoReviewAction(remoteToolName, params.input ?? {}, remoteHostApprovalPresentation?.description, action) : action,
                 [opts.workingDir].filter(
                   (d): d is string => typeof d === 'string' && d.length > 0,
                 ),
@@ -3442,10 +3441,12 @@ export class ClaudeCodeAgent extends BaseAgent {
                 ),
                 'linux',
               );
-              if (!remoteTurnPolicyForcePrompt && autoDecision.verdict === 'allow') {
+              const modeAfterReview = mutablePermissionMode as PermissionMode;
+              if (modeAfterReview === 'bypassPermissions') return { kind: 'permission', behavior: 'allow' };
+              if (modeAfterReview === 'auto' && autoDecision.verdict === 'allow') {
                 return { kind: 'permission', behavior: 'allow' };
               }
-              if (!remoteTurnPolicyForcePrompt && autoDecision.verdict === 'block') {
+              if (modeAfterReview === 'auto' && autoDecision.verdict === 'block') {
                 // 与本地分支同口径:模型判定保持静默(审阅器故障已降级成 ask)。
                 return {
                   kind: 'permission',
@@ -5584,6 +5585,16 @@ export class ClaudeCodeAgent extends BaseAgent {
       });
     };
     const handle: AgentSessionHandle = {
+      reviewAutoPermissionAction: async (action) => {
+        const decision = await reviewAutoAction(
+          action,
+          [opts.workingDir, ...mutableExtraDirs, ...mutableWritableDirs],
+          [opts.workingDir, ...mutableWritableDirs],
+          opts.remoteHostId ? 'linux' : process.platform,
+        );
+        if (decision.unavailable) autoReviewUnavailableNotice.notify();
+        return decision;
+      },
       get id() { return sdkSessionId ?? '<pending>'; },
       agentKind: 'claude-code',
       get model() { return mutableModel; },
@@ -5958,7 +5969,7 @@ export class ClaudeCodeAgent extends BaseAgent {
           }
           userInputAccepted = true;
           activeCapabilitySelectionText = userMessageTextForCapabilityRouting(message.content);
-          setAutoReviewIntent(message.content);
+          setAutoReviewIntent(appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts), { authority: autoReviewContext() });
           replayableUserInput = sdkInput;
           sendInAcceptPhase = false;
           // upstream-response-idle watchdog 起表 — 放在 inputQueue.push 之后, 避免把
@@ -6045,7 +6056,7 @@ export class ClaudeCodeAgent extends BaseAgent {
         appendActiveCapabilitySelectionText(
           userMessageTextForCapabilityRouting(message.content),
         );
-        setAutoReviewIntent(message.content);
+        setAutoReviewIntent(appendAutoReviewUserIntent(priorAutoReviewIntent(), message.content, sendOpts));
         armUpstreamResponseIdle();
       },
 
@@ -6060,6 +6071,7 @@ export class ClaudeCodeAgent extends BaseAgent {
         const generation = turnState.generation;
         turnState.interruptRequested = true;
         turnState.interruptGeneration = generation;
+        autoReviewDecisionCache.clear();
         cancelIdleHostAutoCompact('host_auto_compact_graceful_stop');
         dismissAllPending('graceful_stop', 'deny');
         // A parent result can leave the foreground idle while wake tasks still

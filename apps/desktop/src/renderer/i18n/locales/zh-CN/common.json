@@ -5872,6 +5872,7 @@
     "weeklyLabel": "周限",
     "modelWeeklyLabel": "{{model}} 周限",
     "usedPercent": "已用 {{percent}}%",
+    "remainingPercent": "剩余 {{percent}}%",
     "resetAt": "{{at}} 重置",
     "noWindows": "暂无配额窗口数据",
     "limitRejected": "已触发套餐限额，请求可能被拒绝",
@@ -8364,7 +8365,8 @@
       "dismissTitle": "关闭此中断提示"
     },
     "unreadFailedScheduleBanner": {
-      "text": "此前有定时任务未完成，可查看运行记录。"
+      "text": "此前有定时任务未完成，可查看运行记录。",
+      "dismissTitle": "关闭历史失败提示"
     },
     "worktreeRestoreBanner": {
       "text": "该任务的 worktree 已被回收（目录不存在）。",
@@ -8722,6 +8724,8 @@
       "duplicateFiles": "找到 {{count}} 个同名文件，请改用绝对路径",
       "copyFile": "复制",
       "copyFilePath": "复制文件路径",
+      "copyLocation": "复制位置",
+      "locationCopied": "位置已复制",
       "openWith": "打开方式",
       "openWithAppFailed": "无法用所选应用打开",
       "revealFile": "打开文件所在目录",

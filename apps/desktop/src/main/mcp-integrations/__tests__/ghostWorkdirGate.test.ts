@@ -2085,3 +2085,65 @@ describe('Full Access 插件文件交接', () => {
     expect(dispatchMock).not.toHaveBeenCalled();
   });
 });
+
+
+describe('Host Auto review', () => {
+  it.each(['lookup', 'review'] as const)('media %s failure falls back to real confirmation', async (failure) => {
+    const reviewAction = vi.fn(async () => { throw new Error('review unavailable'); });
+    liveGrantStateMock.mockImplementation(() => {
+      if (failure === 'lookup') throw new Error('registry unavailable');
+      return { permissionMode: 'auto', remoteHostId: null, reviewAction };
+    });
+    const url = `cindy-media://blobs/${'a'.repeat(64)}.png`;
+    callCindyMediaMock.mockResolvedValue({ ok: true, url, local_path: process.execPath, mime_type: 'image/png' });
+    for (const confirmed of [true, false]) {
+      confirmRequestMock.mockResolvedValueOnce({ confirmed, allowDirs: false });
+      const result = await makeDeps('pi', 'auto-media').callMedia?.({ action: 'resolve_local_path', url });
+      expect(result).toMatchObject(confirmed ? { ok: true, local_path: process.execPath } : { ok: false, errorCode: 'LOCAL_PATH_REVEAL_DENIED' });
+    }
+    expect(confirmRequestMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['allow', 'block', 'ask'] as const)('media path reveal obeys AI %s', async (verdict) => {
+    const reviewAction = vi.fn(async () => ({ verdict, reason: 'reviewed' }));
+    liveGrantStateMock.mockReturnValue({ permissionMode: 'auto', remoteHostId: null, reviewAction });
+    const url = `cindy-media://blobs/${'a'.repeat(64)}.png`;
+    callCindyMediaMock.mockResolvedValue({ ok: true, url, local_path: process.execPath, mime_type: 'image/png' });
+    const result = await makeDeps('pi', 'auto-media').callMedia?.({ action: 'resolve_local_path', url });
+    expect(reviewAction).toHaveBeenCalledOnce();
+    expect(confirmRequestMock).toHaveBeenCalledTimes(verdict === 'ask' ? 1 : 0);
+    if (verdict === 'block') expect(result).toMatchObject({ ok: false });
+    else expect(result).toMatchObject({ ok: true, local_path: process.execPath });
+  });
+
+  it('AI file handoff does not become permanent human authorization', async () => {
+    const file = path.join(outsideDir, 'auto-review.png');
+    fs.writeFileSync(file, 'png');
+    let permissionMode = 'auto';
+    const reviewAction = vi.fn(async () => ({ verdict: 'allow' as const }));
+    liveGrantStateMock.mockImplementation(() => ({ permissionMode, remoteHostId: null, reviewAction }));
+    const deps = makeDeps('pi', 'auto-handoff');
+    const request = { ghostId: 'art', tool: 'run', args: {}, attachments: [file] };
+    expect(await deps.callGhostTool(request)).toMatchObject({ ok: true });
+    expect(reviewAction).toHaveBeenCalledOnce();
+    expect(confirmRequestMock).not.toHaveBeenCalled();
+    expect(resolvedAttachmentOrigins).toEqual(['tool']);
+    expect(ledgerRefs.map((ref) => [ref.refKind, ref.originKind])).toEqual([['ghost-tool-grant', 'tool']]);
+    permissionMode = 'ask';
+    await deps.callGhostTool(request);
+    expect(confirmRequestMock).toHaveBeenCalledOnce();
+    expect(ledgerRefs.map((ref) => [ref.refKind, ref.originKind])).toEqual([['ghost-tool-grant', 'tool'], ['ghost-grant', 'user']]);
+  });
+
+  it('AI block stops attachment handoff before granting or dispatching', async () => {
+    const file = path.join(outsideDir, 'auto-block.png');
+    fs.writeFileSync(file, 'png');
+    const reviewAction = vi.fn(async () => ({ verdict: 'block' as const, reason: 'Outside user authorization' }));
+    liveGrantStateMock.mockReturnValue({ permissionMode: 'auto', remoteHostId: null, reviewAction });
+    expect(await makeDeps('pi', 'auto-block').callGhostTool({ ghostId: 'art', tool: 'run', args: {}, attachments: [file] })).toMatchObject({ ok: false });
+    expect(reviewAction).toHaveBeenCalledOnce();
+    expect(confirmRequestMock).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
+    expect(grantAttachmentsMock).not.toHaveBeenCalled();
+  });
+});
