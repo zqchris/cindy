@@ -60,7 +60,7 @@ describe('context editor request ownership', () => {
     hook.unmount();
   });
   it('restores defaults by deletion and exposes failed saves', async () => {
-    get.mockResolvedValue(view(500_000));
+    get.mockResolvedValueOnce(view(500_000)).mockResolvedValue(view(null));
     set.mockResolvedValueOnce(view(null)).mockRejectedValueOnce(new Error('disk full'));
     const hook = renderHook(() => useModelContextLimit(target));
     await act(async () => {});

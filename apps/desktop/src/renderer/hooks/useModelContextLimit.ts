@@ -32,9 +32,12 @@ export function useModelContextLimit(target: ModelContextLimitTarget | null) {
       const current = () => request === generation.current && isDataOwnerGenerationCurrent(owner);
       setState((prev) => ({ ...prev, loading: true, error: false }));
       try {
-        const view = write
+        let view = write
           ? await window.electronAPI.maker.setModelContextLimit(stableTarget, write.limit, stamp)
           : await window.electronAPI.maker.getModelContextLimit(stableTarget);
+        if (write && stableTarget.agent === 'codex' && current()) {
+          view = await window.electronAPI.maker.getModelContextLimit(stableTarget);
+        }
         if (current()) setState({ ...view, loading: false, error: false });
       } catch (error) {
         log.warn('model context limit request failed', error);
