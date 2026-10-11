@@ -2806,9 +2806,14 @@ export function createTurnRunner(
       }
       case 'done':
         if ((event.data as { silentStop?: boolean } | null)?.silentStop === true) {
-          waitForSilentStopSettled(state, t, () => {
+          waitForSilentStopSettled(state, t, (reason) => {
             if (state.scheduledTranspond !== t) return;
-            void finalizeTranspond(state, null);
+            // Exhausted auto-resume is a failure (scheduler and hook settle it as one), so a
+            // silenced run must still report it.
+            void finalizeTranspond(
+              state,
+              reason === 'exhausted' ? terminalErrorText({ reason: 'silent-stop-exhausted' }) : null,
+            );
           });
           return;
         }
@@ -3359,12 +3364,12 @@ export function createTurnRunner(
   function waitForSilentStopSettled(
     state: SessionState,
     turn: Pick<TurnState, 'silentStopSettleUnsub'>,
-    onSettled: () => void,
+    onSettled: (reason: 'exhausted' | 'skip' | 'send-failed') => void,
   ): void {
     if (turn.silentStopSettleUnsub) return;
-    const unsub = onSilentStopSettled(state.makerSession.id, () => {
+    const unsub = onSilentStopSettled(state.makerSession.id, (_sessionId, reason) => {
       clearSilentStopSettleWait(turn);
-      onSettled();
+      onSettled(reason);
     });
     turn.silentStopSettleUnsub = unsub;
   }
