@@ -58,11 +58,11 @@
     "askModeSingle": "单选",
     "askMetaCaption": "{{options}} · {{mode}} · 支持其他回答",
     "collapse": "收起",
-    "collapsePendingCard": "收起待处理请求，先查看电脑端的输出",
+    "collapsePendingCard": "收起待处理请求，先查看输出",
     "expandPendingCard": "展开待处理请求继续回答：{{title}}",
     "collapsedHint": "点开回答",
     "selectAnswer": "选择回答 {{label}}",
-    "submittingHint": "正在把决定回传到电脑端，请不要重复提交。",
+    "submittingHint": "正在提交决定，请勿重复提交。",
     "decisionNotAccepted": "未能提交，请重试。",
     "customAnswerInputAccessibility": "输入自定义回答",
     "customAnswerPlaceholder": "输入其他回答",
@@ -101,7 +101,7 @@
   },
   "kinds": {
     "permission": {
-      "title": "需要授权电脑端操作",
+      "title": "需要授权操作",
       "label": "授权"
     },
     "ask_user_question": {
@@ -381,7 +381,7 @@
       "highRiskTitle": "高风险授权需要二次确认",
       "highRiskDetail": "先核对命令内容，再点一次确认允许；不确定就拒绝。",
       "sessionAllowTitle": "可以只允许一次，也可以本任务总是允许",
-      "allowTitle": "允许后电脑端会继续执行",
+      "allowTitle": "允许后将继续执行",
       "tool": "工具：{{tool}}",
       "title": "允许使用 {{tool}}？",
       "risk": "这个命令可能修改系统、仓库或外部服务状态。允许前请确认你信任当前任务和命令内容。"

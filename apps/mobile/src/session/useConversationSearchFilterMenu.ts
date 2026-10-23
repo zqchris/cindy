@@ -39,6 +39,7 @@ export function useConversationSearchFilterMenu({
         agentHeading: t("devices.list.search.filter.agentHeading"),
         agentKind,
         agentLabels: {
+          cindy: "Cindy",
           all: t("devices.list.search.filter.agent.all"),
           cc: t("devices.list.search.filter.agent.cc"),
           codex: t("devices.list.search.filter.agent.codex"),

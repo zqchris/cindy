@@ -1,3 +1,4 @@
+import { Smartphone } from 'lucide-react-native';
 /**
  * MobileAgentMark —— Claude Code / Codex CLI 的 Agent 身份 mark。
  * 不用于 Anthropic / OpenAI provider 或模型品牌；后两者由 MobileProviderMark 负责。
@@ -19,13 +20,14 @@ const CODEX_SMALL_STROKE = 2;
 const CODEX_LARGE_STROKE = 1.6;
 
 export interface MobileAgentMarkProps {
-  agentKind: 'claude-code' | 'codex' | 'pi';
+  agentKind: 'claude-code' | 'codex' | 'pi' | 'cindy';
   color: string;
   size?: number;
 }
 
 /** 单色 CLI mark；颜色由宿主的主题 / 状态 token 决定。 */
 export function MobileAgentMark({ agentKind, color, size = iconSize.sm }: MobileAgentMarkProps) {
+  if (agentKind === 'cindy') return <Smartphone color={color} size={size} />;
   const codexStrokeWidth = size <= iconSize.sm ? CODEX_SMALL_STROKE : CODEX_LARGE_STROKE;
   return (
     <Svg accessible={false} height={size} viewBox="0 0 24 24" width={size}>

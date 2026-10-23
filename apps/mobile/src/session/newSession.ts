@@ -18,13 +18,14 @@ import { effectiveSourceIdForModel } from '@cindy/model-providers/registry';
 import { reconcileEffortForModel, type ProviderModelRow } from './providerModelSections';
 import type { RemoteSession } from './types';
 
-export type NewSessionAgentKind = 'claude-code' | 'codex' | 'pi';
+export type NewSessionAgentKind = 'claude-code' | 'codex' | 'pi' | 'cindy';
 export type NewSessionWorkspaceKind = 'project' | 'dialogue';
 
 export const NEW_SESSION_AGENT_OPTIONS: readonly { kind: NewSessionAgentKind; label: string }[] = [
   { kind: 'claude-code', label: 'Claude' },
   { kind: 'codex', label: 'Codex' },
   { kind: 'pi', label: 'Pi' },
+  { kind: 'cindy', label: 'Cindy' },
 ];
 
 /**
@@ -36,7 +37,7 @@ export const NEW_SESSION_AGENT_OPTIONS: readonly { kind: NewSessionAgentKind; la
 export function availableNewSessionAgentOptions(
   available: ReadonlySet<NewSessionAgentKind> | null,
 ): readonly { kind: NewSessionAgentKind; label: string }[] {
-  if (!available) return NEW_SESSION_AGENT_OPTIONS;
+  if (!available) return NEW_SESSION_AGENT_OPTIONS.filter((o) => o.kind !== 'cindy');
   const filtered = NEW_SESSION_AGENT_OPTIONS.filter((option) => available.has(option.kind));
   // 防御:被控端异常返回空集时不至于把入口清空到无法创建(至少保留 Claude)。
   return filtered.length > 0 ? filtered : NEW_SESSION_AGENT_OPTIONS.filter((o) => o.kind === 'claude-code');
@@ -169,7 +170,7 @@ export function parseNewSessionDeviceOptions(
 }
 
 export function normalizeNewSessionAgentKind(value: unknown): NewSessionAgentKind | null {
-  return value === 'claude-code' || value === 'codex' || value === 'pi' ? value : null;
+  return value === 'claude-code' || value === 'codex' || value === 'pi' || value === 'cindy' ? value : null;
 }
 
 export function pickNewSessionDefaultDevice(input: {
@@ -409,7 +410,7 @@ type NewSessionDefaultModel = {
   id: string;
   efforts: readonly string[];
   defaultEffort: string | null;
-  newSessionDefault?: readonly ('claude-code' | 'codex' | 'pi')[];
+  newSessionDefault?: readonly ('claude-code' | 'codex' | 'pi' | 'cindy')[];
 };
 
 function isNewSessionDefaultForAgent(

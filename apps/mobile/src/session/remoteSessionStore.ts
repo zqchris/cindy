@@ -3107,12 +3107,12 @@ function sweepStaleTaskUpdates(sessionId: string): boolean {
 function recallParkedTaskUpdates(
   sessionId: string,
   data: unknown,
-  source: 'claude-code' | 'codex' | 'pi' | undefined,
+  source: 'claude-code' | 'codex' | 'pi' | 'cindy' | undefined,
   prevMap: ReadonlyMap<string, AgentTaskUpdate> | undefined,
 ): ReadonlyMap<string, AgentTaskUpdate> | undefined {
   const parkedMap = sessionParkedTaskUpdates.get(sessionId);
   if (!parkedMap || parkedMap.size === 0) return prevMap;
-  const probe = normalizeAgentTaskUpdate(data, source);
+  const probe = normalizeAgentTaskUpdate(data, source === 'cindy' ? undefined : source);
   if (!probe) return prevMap;
   let recalled: Map<string, AgentTaskUpdate> | null = null;
   for (const [key, parked] of parkedMap) {

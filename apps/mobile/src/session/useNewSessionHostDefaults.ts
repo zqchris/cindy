@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isLocalDevice } from '@/local-harness/destination';
 import { getMobileAuthOwner, isMobileAuthOwnerCurrent, type MobileAuthOwnerGeneration } from '@/auth/authOwnerGeneration';
 import type { MobileMakerTransport } from '@/device-link/mobileMakerTransport';
 import { withTransientRemoteRetry } from '@/device-link/remoteRetry';
@@ -34,7 +35,7 @@ export function useNewSessionHostDefaults({
     const cached = getNewSessionHostDefaults(deviceId);
     hostDraftDefaultsRef.current = cached;
     setHostDraftDefaults(cached);
-    if (!deviceId || deviceLinkStatus !== 'online' || !owner.accountKey) return undefined;
+    if (!deviceId || deviceLinkStatus !== 'online' || (!owner.accountKey && !isLocalDevice(deviceId))) return undefined;
     let cancelled = false;
     const successfulAgents = new Set<NewSessionAgentKind>();
     const isCurrent = () => !cancelled && isMobileAuthOwnerCurrent(owner);
@@ -59,7 +60,8 @@ export function useNewSessionHostDefaults({
         if (!isCurrent()) return null;
       }
     };
-    const byAgent = Object.fromEntries(NEW_SESSION_AGENT_OPTIONS.map(({ kind }) => [kind, readAgent(kind).then((runtime) => {
+    const agents = NEW_SESSION_AGENT_OPTIONS.filter(({ kind }) => isLocalDevice(deviceId) ? kind === 'cindy' : kind !== 'cindy');
+    const byAgent = Object.fromEntries(agents.map(({ kind }) => [kind, readAgent(kind).then((runtime) => {
       if (!isCurrent()) return;
       // Publish each engine as soon as it settles. Leaving this page while an
       // unrelated engine is slow must not discard a successful default.

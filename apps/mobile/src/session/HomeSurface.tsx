@@ -1,3 +1,5 @@
+import { isLocalDevice, LOCAL_DEVICE_ID } from '@/local-harness/destination';
+import { localDevice } from '@/local-harness/runtime';
 import { usePublishHomeScheduleUnread } from './HomeUnreadContext';
 import { MountOnFirstOpen } from './MountOnFirstOpen';
 import { getMobileAuthOwner, isMobileAuthOwnerCurrent } from '@/auth/authOwnerGeneration';
@@ -533,7 +535,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
     status,
     subscribe,
     unsubscribe,
-  } = useDeviceLink();
+  } = useDeviceLink(auth.isAuthenticated ? undefined : LOCAL_DEVICE_ID);
   const revokedDevices = useRevokedDevices();
   const sessions = useRemoteHomeSessions();
   const syncInFlightRef = useRef<Promise<void> | null>(null);
@@ -603,7 +605,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
   // loadHome 完成时刻的 ref 镜像:首页列表缓存的种入回调用它判断「fresh 是否已先到」,
   // 避免极端竞态下(AsyncStorage 比整轮 loadHome 还慢)用缓存复活已被 removeDevice 清掉的 shard。
   const lastSyncedAtRef = useRef<number | null>(null);
-  const [devices, setDevices] = useState<DeviceView[]>([]);
+  const [devices, setDevices] = useState<DeviceView[]>([localDevice()]);
   const [deviceIdentityCacheReady, setDeviceIdentityCacheReady] = useState(false);
   // 首页列表缓存(设备+会话快照)是否已尝试种入:首次 loadHome 等它先落地,保证「先画缓存、
   // fresh 回来再覆盖」的顺序确定性(规则 7),缓存为空时该状态同样置 true、行为与现状一致。
@@ -750,7 +752,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
     projectDragEpochRef.current += 1;
     projectDragRef.current = null;
 
-    setDevices([]);
+    setDevices([localDevice()]);
     setHomeListCacheHydrated(false);
     setRefreshing(false);
     setError(null);
@@ -819,7 +821,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
   }, [HOME_LIST_SUBSCRIPTION_OWNER, advanceHomeSyncGeneration, unsubscribe]);
 
   const reconcileDeviceViews = useCallback((nextRawDevices: readonly DeviceView[]) => {
-    const result = reconcileDeviceIdentities(nextRawDevices, deviceIdentityCacheRef.current);
+    const result = reconcileDeviceIdentities([localDevice(), ...nextRawDevices.filter(d => !isLocalDevice(d.deviceId))], deviceIdentityCacheRef.current);
     deviceIdentityCacheRef.current = result.cache;
     if (result.cacheChanged) {
       if (deviceIdentityCachePersistReadyRef.current) void saveDeviceIdentityCache(result.cache);
@@ -1134,6 +1136,13 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
     const accountGenerationAtStart = accountGeneration;
     if (homeAccountGenerationRef.current !== accountGenerationAtStart) return;
     if (!deviceIdentityCacheReady) return;
+    if (!auth.isAuthenticated) {
+      devicesRef.current = [localDevice()]; setDevices(devicesRef.current);
+      const sessions = await invoke<RemoteSession[]>(LOCAL_DEVICE_ID, 'local-db:sessions:list', []);
+      remoteSessionStore.setDeviceSessions(LOCAL_DEVICE_ID, localDevice().name, sessions);
+      setLastSyncedAt(Date.now()); setError(null); setRefreshing(false);
+      return;
+    }
     const visible = options.visible === true;
     if (visible) setRefreshing(true);
     if (syncInFlightRef.current) {
@@ -1285,7 +1294,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
     return task.finally(() => {
       if (visible && homeAccountGenerationRef.current === accountGenerationAtStart) setRefreshing(false);
     });
-  }, [accountGeneration, readDeviceList, deviceIdentityCacheReady, homeCacheUserId, hydrateDeviceSessions, reconcileDeviceViews, reconcileHomeDeviceSyncScope, revokedDevices, softInvalidateDeviceMirror]);
+  }, [accountGeneration, auth.isAuthenticated, invoke, readDeviceList, deviceIdentityCacheReady, homeCacheUserId, hydrateDeviceSessions, reconcileDeviceViews, reconcileHomeDeviceSyncScope, revokedDevices, softInvalidateDeviceMirror]);
   loadHomeRef.current = loadHome;
 
   // 冷启动先画缓存:上次 loadHome 成功的设备+会话快照种入 store,先把列表画出来(消除首屏强制
@@ -2280,7 +2289,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
     syncing: taskSuggestionsSyncing,
   });
   // 无可控电脑时不提供入口;完整空态已有主按钮,避免重复显示新建 CTA。
-  const newSessionEntryVisible = !showRemoteGuide && !taskSuggestionsPending && taskSuggestionsMode !== 'empty';
+  const newSessionEntryVisible = true;
   // 临时任务列表抽屉的新建放在顶栏,不浮动遮挡短列表。
   const headerNewSession = newSessionInHeader && newSessionEntryVisible;
   const selectedDeviceLabel = useMemo(() => {
@@ -2342,7 +2351,7 @@ function HomeScreenContent({ active = true, onModeChange, width, newSessionInSys
   }, [guardedPush, rememberTask, swipeRegistry, t]);
 
   const openNewSession = useCallback((project?: MobileHomeProjectGroup, suggestion?: RemoteTaskSuggestionId, explicitDeviceId?: string, origin?: ComposerMorphOrigin) => {
-    const deviceId = project?.deviceId ?? explicitDeviceId ?? home.primaryDevice?.deviceId;
+    const deviceId = project?.deviceId ?? explicitDeviceId ?? home.primaryDevice?.deviceId ?? LOCAL_DEVICE_ID;
     const deviceName = project?.deviceName ?? newSessionDeviceOptions.find((device) => device.deviceId === deviceId)?.name ?? home.primaryDevice?.label ?? deviceId ?? '';
     if (!deviceId) {
       setError(t('devices.list.error.noDevice'));

@@ -839,6 +839,13 @@ export const authErrorMessages: Record<string, Record<LoginLocale, string>> = {
     ja: "このデバイスではこのログイン方法を利用できません。",
     ko: "이 기기에서는 이 로그인 방법을 사용할 수 없습니다.",
   },
+  SSO_ERROR: {
+    "zh-CN": "企业登录服务返回错误，请稍后重试。",
+    "zh-TW": "企業登入服務傳回錯誤，請稍後重試。",
+    en: "Enterprise sign-in returned an error. Please try again later.",
+    ja: "企業ログインサービスでエラーが発生しました。しばらくしてからお試しください。",
+    ko: "기업 로그인 서비스에서 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+  },
   AUTH_REQUEST_FAILED: {
     "zh-CN": "登录服务暂时不可用，请稍后重试。",
     "zh-TW": "登入服務暫時不可用，請稍後重試。",

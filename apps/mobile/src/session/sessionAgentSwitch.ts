@@ -5,7 +5,7 @@
 import type { MobileAgentCapabilities } from './agentCapabilities';
 import type { RemoteSession, RemoteSessionAgentSwitchIntent } from './types';
 
-export type MobileSessionAgentKind = 'claude-code' | 'codex' | 'pi';
+export type MobileSessionAgentKind = 'claude-code' | 'codex' | 'pi' | 'cindy';
 
 /** 将不可信 device-link payload 收窄为公开 intent；非法值按“无意图”处理。 */
 export function normalizeSessionAgentSwitchIntent(
@@ -48,7 +48,7 @@ export function normalizeSessionAgentSwitchIntent(
 
 /** DB 会话行的 cc/codex 映射到 maker agent kind。 */
 export function sessionAgentKind(session: Pick<RemoteSession, 'agentKind'>): MobileSessionAgentKind {
-  return session.agentKind === 'codex' || session.agentKind === 'pi'
+  return session.agentKind === 'cindy' || session.agentKind === 'codex' || session.agentKind === 'pi'
     ? session.agentKind
     : 'claude-code';
 }
@@ -63,14 +63,14 @@ export function supportsMobileSessionAgentSwitch(
 }
 
 export function mobileAgentLabel(agentKind: MobileSessionAgentKind): string {
-  return agentKind === 'codex' ? 'Codex' : agentKind === 'pi' ? 'Pi' : 'Claude Code';
+  return agentKind === 'cindy' ? 'Cindy' : agentKind === 'codex' ? 'Codex' : agentKind === 'pi' ? 'Pi' : 'Claude Code';
 }
 
 export function mobileAgentLabelFromUnknown(agentKind: unknown): string {
-  return agentKind === 'codex' ? 'Codex' : agentKind === 'pi' ? 'Pi' : 'Claude Code';
+  return agentKind === 'cindy' ? 'Cindy' : agentKind === 'codex' ? 'Codex' : agentKind === 'pi' ? 'Pi' : 'Claude Code';
 }
 
-export function mobileAgentVendor(agentKind: MobileSessionAgentKind): 'cc' | 'codex' | 'pi' {
+export function mobileAgentVendor(agentKind: MobileSessionAgentKind): 'cc' | 'codex' | 'pi' | 'cindy' {
   return agentKind === 'claude-code' ? 'cc' : agentKind;
 }
 

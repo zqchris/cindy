@@ -1,3 +1,5 @@
+import { isLocalDevice } from "@/local-harness/destination";
+import { i18n } from "@/i18n";
 import {
   buildDeviceListPresentation as buildDeviceListPresentationShared,
   toDeviceListItem as toDeviceListItemShared,
@@ -14,7 +16,10 @@ export function toDeviceListItems<TDevice extends DeviceListDeviceLike>(
   now = Date.now(),
   revokedDevices: ReadonlySet<string> = new Set(),
 ) {
-  return toDeviceListItemsShared(devices, now, revokedDevices, mobilePresentationLocalizer);
+  return [
+    ...devices.filter(d => isLocalDevice(d.deviceId)).map(d => toDeviceListItem(d, now, revokedDevices)),
+    ...toDeviceListItemsShared(devices.filter(d => !isLocalDevice(d.deviceId)), now, revokedDevices, mobilePresentationLocalizer),
+  ];
 }
 
 export function toDeviceListItem<TDevice extends DeviceListDeviceLike>(
@@ -22,7 +27,8 @@ export function toDeviceListItem<TDevice extends DeviceListDeviceLike>(
   now = Date.now(),
   revokedDevices: ReadonlySet<string> = new Set(),
 ) {
-  return toDeviceListItemShared(device, now, revokedDevices, mobilePresentationLocalizer);
+  const item = toDeviceListItemShared(device, now, revokedDevices, mobilePresentationLocalizer);
+  return isLocalDevice(device.deviceId) ? { ...item, canOpen: true, state: 'ready' as const, statusLabel: i18n.t('session.local.device'), statusDetail: i18n.t('session.local.runsHere') } : item;
 }
 
 export function buildDeviceListPresentation(

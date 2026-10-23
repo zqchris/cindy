@@ -1,3 +1,4 @@
+import { LOCAL_DEVICE_ID, isLocalDevice } from '@/local-harness/destination';
 import { useNewSessionHostDefaults } from '@/session/useNewSessionHostDefaults';
 import { ErrorNotice } from '@/components/ErrorNotice';
 import { useNewSessionDefaultSelection } from '@/session/useNewSessionDefaultSelection';
@@ -60,6 +61,7 @@ import {
   Camera,
   Check,
   ChevronDown,
+  Settings2,
   ChevronRight,
   ChevronsUpDown,
   Folder,
@@ -538,18 +540,16 @@ export default function NewRemoteSessionScreen() {
     subscribe,
     unsubscribe,
     onAgentsChanged,
-    status: deviceLinkStatus,
+    status: relayStatus,
     connectionEpoch,
     presenceVersion,
   } = useDeviceLink();
-  const deviceLinkStatusRef = useRef(deviceLinkStatus);
-  deviceLinkStatusRef.current = deviceLinkStatus;
   const routeDeviceFallback = useMemo<NewSessionDeviceOption | null>(
     () => routeDeviceId ? { deviceId: routeDeviceId, name: routeDeviceName || routeDeviceId } : null,
     [routeDeviceId, routeDeviceName],
   );
   const deviceOptions = useMemo(
-    () => parseNewSessionDeviceOptions(params.deviceOptions, routeDeviceFallback),
+    () => [{ deviceId: LOCAL_DEVICE_ID, name: t('session.local.device') }, ...parseNewSessionDeviceOptions(params.deviceOptions, routeDeviceFallback).filter(d => !isLocalDevice(d.deviceId))],
     [params.deviceOptions, routeDeviceFallback],
   );
   // 路由设备何时算"显式指定"(盖过上次选择的记忆):项目入口(带 workingDir)、只有一台
@@ -558,6 +558,9 @@ export default function NewRemoteSessionScreen() {
     && (readRouteString(params.deviceExplicit) === '1' || !!initialWorkingDir || deviceOptions.length <= 1);
   const [selectedDeviceId, setSelectedDeviceId] = useState(routeDeviceId);
   const [selectedDeviceName, setSelectedDeviceName] = useState(routeDeviceName);
+  const deviceLinkStatus = isLocalDevice(selectedDeviceId) ? 'online' : relayStatus;
+  const deviceLinkStatusRef = useRef(deviceLinkStatus);
+  deviceLinkStatusRef.current = deviceLinkStatus;
   const [newSessionPreferences, setNewSessionPreferences] = useState<NewSessionStoredPreferences | null>(null);
   const workingDirPreferenceOverridesRef = useRef<Record<string, string>>({});
   const [newSessionPreferencesLoaded, setNewSessionPreferencesLoaded] = useState(false);
@@ -603,6 +606,11 @@ export default function NewRemoteSessionScreen() {
     workspaceKind: initialWorkingDir ? 'project' : 'dialogue',
     workingDir: initialWorkingDir ?? '',
   });
+  useEffect(() => {
+    setDraft(current => isLocalDevice(selectedDeviceId)
+      ? { ...current, agentKind: 'cindy', workspaceKind: 'dialogue', workingDir: '', permissionMode: 'ask', fastMode: false }
+      : current.agentKind === 'cindy' ? { ...current, agentKind: 'claude-code', model: '', providerId: null } : current);
+  }, [selectedDeviceId]);
   const firstMessageRef = useRef(draft.firstMessage);
   const [planModeDraftOn, setPlanModeDraftOn] = useState(false);
   const prePlanPermissionModeRef = useRef<string | null>(null);
@@ -690,7 +698,7 @@ export default function NewRemoteSessionScreen() {
   }, [collabTargetKey]);
   // 读入口状态;重连后重读:断线时读失败会落成「不可用」,不能让表单一直卡住。
   useEffect(() => {
-    if (!contextSheetOpen || !collabEligible || !selectedDeviceId) return undefined;
+    if (!contextSheetOpen || !collabEligible || !selectedDeviceId || draft.agentKind === 'cindy') return undefined;
     let cancelled = false;
     setCollabEntryStatus('loading');
     void readOrcaCollabEntryStatus(maker, collabTarget, draft.agentKind)
@@ -2226,7 +2234,7 @@ export default function NewRemoteSessionScreen() {
         setAvailableAgentKinds(
           new Set(
             (Array.isArray(agents) ? agents : []).filter(
-              (a): a is NewSessionAgentKind => a === 'claude-code' || a === 'codex' || a === 'pi',
+              (a): a is NewSessionAgentKind => a === 'claude-code' || a === 'codex' || a === 'pi' || a === 'cindy',
             ),
           ),
         );
@@ -2689,8 +2697,11 @@ export default function NewRemoteSessionScreen() {
     setAgentPickerOpen(false);
     setPermissionSheetOpen(false);
     setWorktreeBranchSheetOpen(false);
+    if (isLocalDevice(selectedDeviceId) && !deviceProviders.providers.some(p => p.connected)) {
+      router.push('/model-settings'); return;
+    }
     setModelSheetOpen(true);
-  }, []);
+  }, [selectedDeviceId, deviceProviders.providers, router]);
 
   const openPermissionPicker = useCallback(() => {
     setDevicePickerOpen(false);
@@ -3995,6 +4006,10 @@ export default function NewRemoteSessionScreen() {
             : null}
           <ChevronDown color={colors.textTertiary} size={iconSize.sm} strokeWidth={iconStroke.regular} />
         </Pressable>
+        {isLocalDevice(selectedDeviceId) ? <Pressable accessibilityRole="button" accessibilityLabel={t('session.local.models')}
+          onPress={() => router.push('/model-settings')} style={styles.modelPill} testID="newSession.localModels">
+          <Settings2 color={colors.textSecondary} size={iconSize.sm} strokeWidth={iconStroke.regular} />
+        </Pressable> : null}
       </ComposerToolbarLeftGroup>
       <ComposerToolbarSpacer />
       {composerVoicePlacement?.inline || composerVoicePlacement?.floating
@@ -4548,6 +4563,21 @@ export default function NewRemoteSessionScreen() {
           name: selectedDeviceName || selectedDeviceId,
         },
       });
+      if (isLocalDevice(selectedDeviceId)) {
+        if (sendAttachments.length) throw new Error(t('session.local.attachmentsUnsupported'));
+        const sessionId = createNewSessionId();
+        await maker.createSession({ id: sessionId, agentKind: 'cindy', model: effectiveDraft.model, providerId: effectiveDraft.providerId ?? undefined, workspaceKind: 'dialogue', title: effectiveDraft.firstMessage.slice(0, 80) });
+        const clientId = createOutboxClientId();
+        const text = effectiveDraft.firstMessage;
+        await maker.input.enqueue(sessionId, { clientId, text, persistedContent: text, model: effectiveDraft.model,
+          effort: '', permissionMode: 'ask', workingDir: `/tasks/${sessionId}`,
+          createOpts: { agentKind: 'cindy', workingDir: `/tasks/${sessionId}`, model: effectiveDraft.model },
+          chatMessage: { clientId, role: 'user', content: text, createdAt: new Date().toISOString() },
+        });
+        handedOff = true;
+        router.replace({ pathname: '/sessions/[sessionId]', params: { sessionId, deviceId: LOCAL_DEVICE_ID, deviceName: t('session.local.device') } });
+        return;
+      }
       const worktreeAccountId = authOwnerAtCreate.accountId;
       const creatingWorktree = worktreeIntent.applicable
         && worktreeIntent.enabled
@@ -6344,7 +6374,7 @@ export default function NewRemoteSessionScreen() {
             {/* 发送前鉴权提示:选中 agent 在被控端无已连接供应商时提前告知;
                 error 已展示(含被门禁拦截的同款文案)时不重复出现。 */}
             {!error && agentAuthVerdict === 'unauthenticated' ? (
-              <Text style={styles.errorText} testID="newSession.agentAuthGateHint">
+              <Text onPress={isLocalDevice(selectedDeviceId) ? () => router.push('/model-settings') : undefined} style={styles.errorText} testID="newSession.agentAuthGateHint">
                 {agentAuthGateHint(draft.agentKind)}
               </Text>
             ) : null}

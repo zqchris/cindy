@@ -58,11 +58,11 @@
     "askModeSingle": "Single select",
     "askMetaCaption": "{{options}} · {{mode}} · Other answers allowed",
     "collapse": "Collapse",
-    "collapsePendingCard": "Collapse the pending request to read your computer's output first",
+    "collapsePendingCard": "Collapse the pending request to read the output first",
     "expandPendingCard": "Expand the pending request to answer: {{title}}",
     "collapsedHint": "Tap to answer",
     "selectAnswer": "Select answer {{label}}",
-    "submittingHint": "Sending the decision to your computer. Don't submit again.",
+    "submittingHint": "Submitting your decision. Don’t submit again.",
     "decisionNotAccepted": "Your response was not accepted. Please try again.",
     "customAnswerInputAccessibility": "Enter a custom answer",
     "customAnswerPlaceholder": "Enter another answer",
@@ -101,7 +101,7 @@
   },
   "kinds": {
     "permission": {
-      "title": "Permission Needed on Your Computer",
+      "title": "Permission needed",
       "label": "Permission"
     },
     "ask_user_question": {
@@ -381,7 +381,7 @@
       "highRiskTitle": "High-risk permission needs confirmation",
       "highRiskDetail": "Review the command, then confirm again to allow it. Deny it if you're unsure.",
       "sessionAllowTitle": "Allow once or always allow for this task",
-      "allowTitle": "The computer will continue after you allow this",
+      "allowTitle": "Execution continues after you allow this",
       "tool": "Tool: {{tool}}",
       "title": "Allow {{tool}}?",
       "risk": "This command may change the system, repository, or an external service. Before allowing it, confirm that you trust the current task and command."

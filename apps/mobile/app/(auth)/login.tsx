@@ -1,13 +1,15 @@
+import { enableLocalAccess } from "@/local-harness/localAccess";
+import { nativeHarness } from "@/local-harness/kernel";
 import { SystemNavigationBack, useSystemNavigationBack } from '@/platform/chrome/SystemNavigationBack';
 import { useAdaptiveWindow } from '@/platform/AdaptiveWindowContext';
 import { resolveLoginGroupPlacement } from '@/auth/loginGroupPlacement';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { X } from 'lucide-react-native';
 import { HomeHeaderGlassButton } from '@/session/HomeHeaderGlassButton';
 import { hasNativeLoginButtons, LoginNativeButton } from '@/components/LoginNativeButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Easing, Keyboard, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Animated, Easing, Keyboard, Linking, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AccountDeletionStatus, SocialProvider, VerificationKind } from '@cindy/auth-client';
 
@@ -116,6 +118,7 @@ export function LoginScreen({
   // 订阅语言变化:本屏文案走 loginText()(非响应式),useTranslation 保证
   // 手动语言 override 恢复/切换时本屏跟着重渲(P2-a:不依赖 auth 重渲兜底)。
   const { t } = useTranslation();
+  const router = useRouter();
   const auth = useAuth();
   const remoteSessionStoreVersion = useRemoteSessionStoreVersion();
   const hasRunningTasks = useMemo(
@@ -1437,6 +1440,12 @@ export function LoginScreen({
           </Animated.View>
         </ScrollView>
       </View>
+      {!additionalAccount && nativeHarness ? <Pressable
+        accessibilityRole="button" testID="login.local" accessibilityLabel={t('session.local.skipLogin')}
+        onPress={() => { void enableLocalAccess().then(() => router.replace('/')).catch(() => Alert.alert(t('session.local.failed'))); }}
+        style={{ position: 'absolute', bottom: insets.bottom + spacing.lg, alignSelf: 'center', minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg }}>
+        <Text style={styles.helper}>{t('session.local.skipLogin')}</Text>
+      </Pressable> : null}
       <AccountSwitcherSheet
         hasRunningTasks={hasRunningTasks}
         onAddAccount={() => {

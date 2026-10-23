@@ -1,3 +1,6 @@
+import { LOCAL_DEVICE_ID, isLocalDevice } from "@/local-harness/destination";
+import { nativeHarness } from "@/local-harness/kernel";
+import { PluginsPanel } from "@/local-harness/PluginsPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -109,7 +112,7 @@ function PluginDirectory() {
     devices.error || (targets.length > 0 && list.error),
   );
   const directoryLoading = Boolean(devices.loading || list.loading);
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState(auth.isAuthenticated ? "" : LOCAL_DEVICE_ID);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<{
     row: HostedRemoteCollectionItem;
@@ -125,7 +128,7 @@ function PluginDirectory() {
   const enableLock = useRef(false);
   const [taskPicker, setTaskPicker] = useState(false);
   const [pageTitle, setPageTitle] = useState("");
-  const searchVisible = Platform.OS === "ios" && (!selected || wide);
+  const searchVisible = !isLocalDevice(deviceId) && Platform.OS === "ios" && (!selected || wide);
   const latestQuery = useRef(query);
   latestQuery.current = query;
   const searchBar = useMemo(() => {
@@ -375,6 +378,7 @@ function PluginDirectory() {
   const selectDevice = () =>
     Alert.alert(t("plugins.computer"), undefined, [
       { text: t("plugins.allComputers"), onPress: () => setDeviceId("") },
+      ...(nativeHarness ? [{ text: t("session.local.device"), onPress: () => setDeviceId(LOCAL_DEVICE_ID) }] : []),
       ...targets.map((host) => ({
         text: host.deviceName,
         onPress: () => setDeviceId(host.deviceId),
@@ -453,7 +457,7 @@ function PluginDirectory() {
     Platform.OS === "ios" ? (
       <View style={[styles.directory, wide && styles.sidebar]}>
         <PluginDirectoryView
-          targets={targets}
+          targets={nativeHarness ? [{ deviceId: LOCAL_DEVICE_ID, deviceName: t("session.local.device") }, ...targets] : targets}
           deviceId={deviceId}
           onDeviceChange={setDeviceId}
           query={query}
@@ -745,7 +749,12 @@ function PluginDirectory() {
           }}
         />
       ) : null}
-      <View style={styles.layout}>
+      {isLocalDevice(deviceId) ? <View style={styles.main}>
+        <Pressable accessibilityRole="button" onPress={selectDevice} style={styles.button}>
+          <Text style={styles.controlText}>{t('session.local.device')}</Text>
+        </Pressable>
+        <PluginsPanel />
+      </View> : <View style={styles.layout}>
         {wide || !selected ? directory : null}
         {wide || selected ? (
           <View style={styles.main}>
@@ -767,7 +776,7 @@ function PluginDirectory() {
             {!selected?.surface || detailOpen ? detailView : null}
           </View>
         ) : null}
-      </View>
+      </View>}
     </SafeAreaView>
   );
 }

@@ -365,9 +365,11 @@ export function PluginScheduleDraft({
           },
           onSelect: async (value) => {
             assertCurrent();
+            if (value.agent === "cindy") return false;
+            const agentKind = value.agent;
             setDraft((d) => ({
               ...d,
-              agentKind: value.agent,
+              agentKind,
               model: value.modelId,
               providerId: value.providerId,
               effort: value.effort || "",

@@ -131,10 +131,22 @@
         "deleted": "Deleted"
       },
       "actions": {
-        "settings": { "label": "Settings", "a11y": "Open session settings" },
-        "usage": { "label": "Usage", "a11y": "View session usage" },
-        "files": { "label": "Files", "a11y": "Browse remote files" },
-        "queue": { "label": "Queue", "a11y": "Open queue panel" },
+        "settings": {
+          "label": "Settings",
+          "a11y": "Open session settings"
+        },
+        "usage": {
+          "label": "Usage",
+          "a11y": "View session usage"
+        },
+        "files": {
+          "label": "Files",
+          "a11y": "Browse remote files"
+        },
+        "queue": {
+          "label": "Queue",
+          "a11y": "Open queue panel"
+        },
         "search": {
           "label": "Search",
           "openA11y": "Search messages",
@@ -259,7 +271,7 @@
     "editingQueueMessage": "Editing queued message",
     "discardQueueEdit": "Discard queued message edit",
     "savingHint": "Saving changes; wait until it finishes.",
-    "composerPlaceholder": "Type a remote message",
+    "composerPlaceholder": "Message",
     "openSessionMenu": "Open session menu",
     "searchTitle": "Search this session",
     "searchPlaceholder": "Search messages in this session",
@@ -303,7 +315,7 @@
     "workspaceDialogue": "Chat",
     "workspaceProject": "Project",
     "selectProject": "Select a project",
-    "composerPlaceholder": "What should we work on today?",
+    "composerPlaceholder": "Message",
     "voiceSelectDeviceFirst": "Select a device before using voice input.",
     "creatingSession": "Creating session",
     "slowSend": {
@@ -675,5 +687,19 @@
       "ORCA_CREATE_UNCONFIRMED": "Creating the Worker timed out and couldn't be confirmed. Check the Worker list first, and retry only if no new Worker appears.",
       "ORCA_ACTION_UNCONFIRMED": "The request timed out, so the result isn't confirmed yet. The list has been refreshed; go by what it shows now."
     }
+  },
+  "local": {
+    "loginCindyAI": "Sign in to use Cindy AI",
+    "refreshCindyAI": "Refresh Cindy AI models",
+    "device": "This device",
+    "newTask": "New task",
+    "attachmentsUnsupported": "Attachments are not supported by this local model yet.",
+    "models": "Models",
+    "chatgpt": "Continue with ChatGPT",
+    "modelHint": "Sign in on this phone, or add an API model. Your computer’s credentials stay on your computer.",
+    "failed": "The operation failed. Please try again.",
+    "skipLogin": "Skip login · use this phone",
+    "runsHere": "Runs on this phone",
+    "connectModel": "Add a model to work on this phone."
   }
 }

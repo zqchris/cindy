@@ -1,3 +1,5 @@
+import { loadLocalAccess, useLocalAccess } from "@/local-harness/localAccess";
+import { LocalRuntimeBridge } from "@/local-harness/LocalRuntimeBridge";
 import { completePrecreatedWorktreeRecovery } from '@/session/completePrecreatedWorktreeRecovery';
 import { recentTaskKey } from '@/session/recentTasks';
 import { readComposerEntry } from '@/session/composerMorph';
@@ -96,6 +98,8 @@ function NavigationGate() {
   const sessionHeaderShown = Platform.OS === 'ios'
     && (windowGeometry.barEdge !== 'none' || !sessionPaneLayout(windowGeometry).persistent);
   const auth = useAuth();
+  const local = useLocalAccess();
+  useEffect(() => { void loadLocalAccess(); }, []);
   const router = useRouter();
   const segments = useSegments();
   useEffect(() => { void removeLegacyClipboardInvitationHistory(); }, []);
@@ -133,10 +137,10 @@ function NavigationGate() {
   }, [auth.initialized]);
 
   useEffect(() => {
-    if (!auth.initialized) return;
+    if (!auth.initialized || !local.ready) return;
     const inAuthGroup = segments[0] === '(auth)';
     // 供应商分享链接的提示页只说明「请在电脑上打开」,不读账号数据,未登录也直接显示。
-    if (!auth.isAuthenticated && !inAuthGroup && segments[0] !== 'provider-share') {
+    if (!auth.isAuthenticated && !local.enabled && !inAuthGroup && segments[0] !== 'provider-share') {
       router.replace('/login');
       return;
     }
@@ -146,7 +150,7 @@ function NavigationGate() {
     } else if (auth.isAuthenticated && pendingSharedTaskInvitation && segments.join('/') !== 'shared-session') {
       router.replace('/shared-session');
     }
-  }, [auth.initialized, auth.isAuthenticated, pendingSharedTaskInvitation, router, segments]);
+  }, [auth.initialized, auth.isAuthenticated, local, pendingSharedTaskInvitation, router, segments]);
 
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.accountDeletionRestored) return;
@@ -382,6 +386,7 @@ function RootAfterUpdateChannel({ channel }: { channel: UpdateChannel }) {
         <PeerFileTransport />
         <PrecreatedWorktreeRecoveryBridge />
         <MobileOutboxBridge />
+        <LocalRuntimeBridge />
         <RemoteHistoryPrefetchBridge />
         <HomeEntryProvider>
           <NavigationGate />

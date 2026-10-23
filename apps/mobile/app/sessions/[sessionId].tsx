@@ -1,3 +1,4 @@
+import { isLocalDevice } from '@/local-harness/destination';
 import { useSessionHistorySearch } from '@/session/useSessionHistorySearch';
 import { useContentRecoveryDiagnostics } from '@/debug/useContentRecoveryDiagnostics';
 import { modelNeedsReselection } from '@/session/modelReselection';
@@ -1119,7 +1120,7 @@ function SessionScreenContent() {
     status,
     subscribe,
     unsubscribe,
-  } = useDeviceLink();
+  } = useDeviceLink(deviceId);
   const revokedDevices = useRevokedDevices();
   const unresponsiveDevices = useUnresponsiveDevices();
   const maker = useMobileMakerTransport(deviceId);
@@ -6422,7 +6423,7 @@ function SessionScreenContent() {
       setSending(false);
       return;
     }
-    const useDurableOutbox = outboxEligible && !earlyLocalCommand && !earlyDesktopCommand && !legacyPlanRequiresLiveDispatch;
+    const useDurableOutbox = !isLocalDevice(deviceId) && outboxEligible && !earlyLocalCommand && !earlyDesktopCommand && !legacyPlanRequiresLiveDispatch;
     const planModeAtSend = runtimeOptions?.planModeSupported === true
       ? (readSessionRowNow() ?? currentSession).planModeEnabled === true
       : undefined;

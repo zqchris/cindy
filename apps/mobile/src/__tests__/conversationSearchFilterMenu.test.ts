@@ -22,6 +22,7 @@ function project(
 const labels = {
   agentHeading: "Agent",
   agentLabels: {
+    cindy: "Cindy",
     all: "全部",
     cc: "Claude Code",
     codex: "Codex",

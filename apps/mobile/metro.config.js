@@ -24,6 +24,7 @@ const workspaceTsSourcePackages = [
   'device-link-protocol',
   'maker-shared',
   'model-providers',
+  'plugin-protocol',
 ];
 
 config.resolver.disableHierarchicalLookup = true;

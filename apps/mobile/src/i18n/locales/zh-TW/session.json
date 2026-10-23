@@ -131,10 +131,22 @@
         "deleted": "已刪除"
       },
       "actions": {
-        "settings": { "label": "設定", "a11y": "開啟任務設定" },
-        "usage": { "label": "用量", "a11y": "查看任務用量" },
-        "files": { "label": "檔案", "a11y": "瀏覽遠端檔案" },
-        "queue": { "label": "佇列", "a11y": "開啟佇列面板" },
+        "settings": {
+          "label": "設定",
+          "a11y": "開啟任務設定"
+        },
+        "usage": {
+          "label": "用量",
+          "a11y": "查看任務用量"
+        },
+        "files": {
+          "label": "檔案",
+          "a11y": "瀏覽遠端檔案"
+        },
+        "queue": {
+          "label": "佇列",
+          "a11y": "開啟佇列面板"
+        },
         "search": {
           "label": "搜尋",
           "openA11y": "搜尋訊息",
@@ -259,7 +271,7 @@
     "editingQueueMessage": "正在編輯排隊訊息",
     "discardQueueEdit": "放棄編輯排隊訊息",
     "savingHint": "正在儲存修改，完成後再操作。",
-    "composerPlaceholder": "輸入遠端訊息",
+    "composerPlaceholder": "輸入訊息",
     "openSessionMenu": "開啟任務選單",
     "searchTitle": "搜尋當前任務",
     "searchPlaceholder": "搜尋當前任務的訊息",
@@ -303,7 +315,7 @@
     "workspaceDialogue": "對話",
     "workspaceProject": "專案",
     "selectProject": "選擇專案",
-    "composerPlaceholder": "今天我們做點什麼呢~",
+    "composerPlaceholder": "輸入訊息",
     "voiceSelectDeviceFirst": "請選擇裝置後再使用語音輸入。",
     "creatingSession": "正在建立任務",
     "slowSend": {
@@ -675,5 +687,19 @@
       "ORCA_CREATE_UNCONFIRMED": "建立 Worker 逾時，暫時無法確認是否成功。請先查看 Worker 列表，確認沒有新建的 Worker 後再重試。",
       "ORCA_ACTION_UNCONFIRMED": "操作逾時，暫時無法確認結果。已重新整理列表，請以目前顯示的狀態為準。"
     }
+  },
+  "local": {
+    "loginCindyAI": "登入使用 Cindy AI",
+    "refreshCindyAI": "重新整理 Cindy AI 模型",
+    "device": "本機",
+    "newTask": "新任務",
+    "attachmentsUnsupported": "這個本機模型暫不支援附件。",
+    "models": "模型",
+    "chatgpt": "使用 ChatGPT 登入",
+    "modelHint": "在手機上獨立授權，或新增 API 模型。電腦上的授權保持不變。",
+    "failed": "操作未完成，請重試。",
+    "skipLogin": "略過登入，在本機使用",
+    "runsHere": "在這台手機上執行",
+    "connectModel": "新增模型，即可在本機開始工作。"
   }
 }

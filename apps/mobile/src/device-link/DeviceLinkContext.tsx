@@ -1,3 +1,4 @@
+import { isLocalDevice } from '@/local-harness/destination';
 import Constants from 'expo-constants';
 import { tryMobilePeerInvoke, resetMobilePeer } from './peerFileRegistry';
 import { isHistoryViewUnavailable, type HistoryWorkPatch } from '@cindy/maker-shared/message-window';
@@ -590,6 +591,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
     topics: readonly Topic[],
   ) => {
     const releaseGeneration = backgroundReleaseGenerationRef.current;
+    if (isLocalDevice(deviceId)) return;
     topics = sharedTaskTopics(deviceId, topics);
     const record = recoveryDiagnostics.get(client)?.capture(deviceId, connectionEpochRef.current);
     await confirmTrackedSubscription({
@@ -1504,6 +1506,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
 
   const openLink = useCallback(
     async (deviceId: string) => {
+      if (isLocalDevice(deviceId)) return (await import('@/local-harness/runtime')).localLink;
       registryRef.current.trackOpenLink(deviceId);
       return sendOpenLinkOnce(requireClient(clientRef.current), deviceId).request;
     },
@@ -1512,6 +1515,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
 
   const reopenLink = useCallback(
     async (deviceId: string) => {
+      if (isLocalDevice(deviceId)) return (await import('@/local-harness/runtime')).localLink;
       registryRef.current.trackOpenLink(deviceId);
       return sendOpenLinkOnce(
         requireClient(clientRef.current),
@@ -1524,6 +1528,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
   );
 
   const closeLink = useCallback((deviceId: string) => {
+    if (isLocalDevice(deviceId)) return;
     resetMobilePeer(deviceId);
     registryRef.current.untrackOpenLink(deviceId);
     forcedPeerRecoveryIntentRef.current.cancel(deviceId);
@@ -1537,6 +1542,10 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
     args: unknown[] = [],
     opts?: { preSend?: () => void; background?: boolean },
   ) => {
+    if (isLocalDevice(deviceId)) {
+      opts?.preSend?.();
+      return (await import('@/local-harness/runtime')).invokeLocal<T>(channel, args);
+    }
     const preSend = () => {
       if (presenceAvailableByDeviceRef.current.get(deviceId) === false) {
         const disabled = presenceUnavailableVerdictsRef.current.get(deviceId)?.kind === 'disabled';
@@ -1574,6 +1583,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
   }, [sendOpenLinkOnce]);
 
   const subscribe = useCallback(async (owner: string, deviceId: string, topics: string[]) => {
+    if (isLocalDevice(deviceId)) return;
     topics = sharedTaskTopics(deviceId, topics);
     // `owner` is the stable id of the mounted consumer (e.g. `session:<id>`). Tracking is
     // idempotent per (owner, topic), so resync/retry resubscribes don't accumulate. The
@@ -1587,6 +1597,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
   }, [sendTrackedSubscribe]);
 
   const unsubscribe = useCallback(async (owner: string, deviceId: string, topics: string[]) => {
+    if (isLocalDevice(deviceId)) return;
     topics = sharedTaskTopics(deviceId, topics);
     // Drop only this owner's hold; release (server unsubscribe) the topics whose last owner
     // just left. If a focused screen blurs before subscribe acknowledgement, a later cleanup may
@@ -1609,7 +1620,7 @@ export function DeviceLinkProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getPresenceAvailability = useCallback((deviceId: string): boolean | null => (
-    isSharedTaskPeer(deviceId) ? clientRef.current?.isLinkReady(deviceId) ?? false
+    isLocalDevice(deviceId) ? true : isSharedTaskPeer(deviceId) ? clientRef.current?.isLinkReady(deviceId) ?? false
       : presenceAvailableByDeviceRef.current.get(deviceId) ?? null
   ), []);
 
@@ -2351,8 +2362,8 @@ function logMobileDeviceLink(level: MobileDeviceLinkLogLevel, args: unknown[]): 
   console.debug('[device-link]', ...args);
 }
 
-export function useDeviceLink(): DeviceLinkContextValue {
+export function useDeviceLink(deviceId?: string): DeviceLinkContextValue {
   const ctx = useContext(DeviceLinkContext);
   if (!ctx) throw new Error('useDeviceLink must be used inside DeviceLinkProvider');
-  return ctx;
+  return useMemo(() => isLocalDevice(deviceId) ? { ...ctx, status: 'online' as const, connectionIssue: null } : ctx, [ctx, deviceId]);
 }

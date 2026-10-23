@@ -58,11 +58,11 @@
     "askModeSingle": "単一選択",
     "askMetaCaption": "{{options}} · {{mode}} · その他の回答も可",
     "collapse": "折りたたむ",
-    "collapsePendingCard": "保留中のリクエストを折りたたみ、先にパソコンの出力を確認",
+    "collapsePendingCard": "保留中のリクエストを折りたたんで出力を確認",
     "expandPendingCard": "保留中のリクエストを展開して回答：{{title}}",
     "collapsedHint": "タップして回答",
     "selectAnswer": "回答 {{label}} を選択",
-    "submittingHint": "決定をパソコンに送信中です。重複して送信しないでください。",
+    "submittingHint": "回答を送信中です。再送信しないでください。",
     "decisionNotAccepted": "回答を送信できませんでした。もう一度お試しください。",
     "customAnswerInputAccessibility": "カスタム回答を入力",
     "customAnswerPlaceholder": "その他の回答を入力",
@@ -101,7 +101,7 @@
   },
   "kinds": {
     "permission": {
-      "title": "パソコンの操作を許可してください",
+      "title": "操作の許可が必要です",
       "label": "許可"
     },
     "ask_user_question": {
@@ -381,7 +381,7 @@
       "highRiskTitle": "高リスクの権限は再確認が必要です",
       "highRiskDetail": "コマンドを確認し、もう一度許可を確定してください。不明な場合は拒否してください。",
       "sessionAllowTitle": "今回だけ許可するか、このタスクで常に許可できます",
-      "allowTitle": "許可するとコンピューターで実行を続けます",
+      "allowTitle": "許可すると実行を続けます",
       "tool": "ツール：{{tool}}",
       "title": "{{tool}} の使用を許可しますか？",
       "risk": "このコマンドはシステム、リポジトリ、または外部サービスの状態を変更する可能性があります。許可する前に、現在のタスクとコマンドを信頼できることを確認してください。"

@@ -1,0 +1,18 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'app.cindy.harness'
+version = '0.1.0'
+android {
+  namespace 'app.cindy.harness'
+  defaultConfig { minSdkVersion 24 }
+}
+def rustBuild = tasks.register('buildRustHarness', Exec) {
+  inputs.dir('../../../../../packages/mobile-harness/src')
+  inputs.files('../../../../../packages/mobile-harness/Cargo.toml', '../../../../../packages/mobile-harness/Cargo.lock', '../build-android.mjs')
+  outputs.dir('src/main/jniLibs')
+  environment 'ANDROID_NDK_HOME', android.ndkDirectory.absolutePath
+  commandLine 'node', '../build-android.mjs'
+}
+tasks.named('preBuild').configure { dependsOn rustBuild }

@@ -125,12 +125,28 @@
       "pendingCount": "보류 중 {{count}}개",
       "readOnly": "읽기 전용",
       "queuePaused": "대기열 일시 중지됨",
-      "status": { "active": "활성", "archived": "보관됨", "deleted": "삭제됨" },
+      "status": {
+        "active": "활성",
+        "archived": "보관됨",
+        "deleted": "삭제됨"
+      },
       "actions": {
-        "settings": { "label": "설정", "a11y": "작업 설정 열기" },
-        "usage": { "label": "사용량", "a11y": "작업 사용량 보기" },
-        "files": { "label": "파일", "a11y": "원격 파일 탐색" },
-        "queue": { "label": "대기열", "a11y": "대기열 패널 열기" },
+        "settings": {
+          "label": "설정",
+          "a11y": "작업 설정 열기"
+        },
+        "usage": {
+          "label": "사용량",
+          "a11y": "작업 사용량 보기"
+        },
+        "files": {
+          "label": "파일",
+          "a11y": "원격 파일 탐색"
+        },
+        "queue": {
+          "label": "대기열",
+          "a11y": "대기열 패널 열기"
+        },
         "search": {
           "label": "검색",
           "openA11y": "메시지 검색",
@@ -255,7 +271,7 @@
     "editingQueueMessage": "대기열 메시지 편집 중",
     "discardQueueEdit": "대기열 메시지 편집 취소",
     "savingHint": "변경을 저장 중입니다. 완료된 후 진행하세요.",
-    "composerPlaceholder": "원격 메시지 입력",
+    "composerPlaceholder": "메시지 입력",
     "openSessionMenu": "세션 메뉴 열기",
     "searchTitle": "이 세션 검색",
     "searchPlaceholder": "이 세션의 메시지 검색",
@@ -299,7 +315,7 @@
     "workspaceDialogue": "대화",
     "workspaceProject": "프로젝트",
     "selectProject": "프로젝트 선택",
-    "composerPlaceholder": "오늘 무엇을 해볼까요~",
+    "composerPlaceholder": "메시지 입력",
     "voiceSelectDeviceFirst": "기기를 선택한 후 음성 입력을 사용하세요.",
     "creatingSession": "세션 생성 중",
     "slowSend": {
@@ -671,5 +687,19 @@
       "ORCA_CREATE_UNCONFIRMED": "Worker 만들기가 시간 초과되어 성공 여부를 확인하지 못했습니다. 먼저 Worker 목록을 확인하고, 새 Worker가 없을 때만 다시 시도하세요.",
       "ORCA_ACTION_UNCONFIRMED": "작업 시간이 초과되어 결과를 아직 확인하지 못했습니다. 목록을 새로 고쳤으니 현재 표시된 상태를 기준으로 하세요."
     }
+  },
+  "local": {
+    "loginCindyAI": "로그인하여 Cindy AI 사용",
+    "refreshCindyAI": "Cindy AI 모델 새로고침",
+    "device": "이 기기",
+    "newTask": "새 작업",
+    "attachmentsUnsupported": "이 로컬 모델은 아직 첨부 파일을 지원하지 않습니다.",
+    "models": "모델",
+    "chatgpt": "ChatGPT로 로그인",
+    "modelHint": "이 휴대폰에서 로그인하거나 API 모델을 추가하세요. 컴퓨터의 인증 정보는 변경되지 않습니다.",
+    "failed": "작업을 완료하지 못했습니다. 다시 시도하세요.",
+    "skipLogin": "로그인 없이 이 휴대폰에서 사용",
+    "runsHere": "이 휴대폰에서 실행",
+    "connectModel": "모델을 추가해 이 휴대폰에서 작업하세요."
   }
 }

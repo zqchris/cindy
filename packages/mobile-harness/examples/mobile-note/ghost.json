@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 3,
+  "minCindyVersion": "0.1.0",
+  "id": "mobile-note",
+  "name": "Mobile Notes",
+  "version": "0.1.0",
+  "description": "Save a note in the current task workspace. No network access.",
+  "entry": "main.js",
+  "tools": [{
+    "name": "save_note",
+    "description": "Write the supplied text to note.txt in the current task. Replaces the existing note.txt. Does not access the network.",
+    "parameters": { "type": "object", "properties": { "text": { "type": "string" } }, "required": ["text"] }
+  }]
+}

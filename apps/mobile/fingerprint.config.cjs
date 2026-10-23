@@ -52,6 +52,11 @@ module.exports = {
       reasons: ["native message menu assets"],
     }))
     .concat([
+      ...["Cargo.toml", "Cargo.lock", "src"].map((name) => ({
+        type: name === "src" ? "dir" : "file",
+        filePath: `../../packages/mobile-harness/${name}`,
+        reasons: ["mobile harness native core"],
+      })),
       {
         type: "dir",
         filePath: "plugins/communication-notifications",

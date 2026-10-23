@@ -58,11 +58,11 @@
     "askModeSingle": "單選",
     "askMetaCaption": "{{options}} · {{mode}} · 支援其他回答",
     "collapse": "收起",
-    "collapsePendingCard": "收起待處理請求，先檢視電腦端的輸出",
+    "collapsePendingCard": "收起待處理請求，先查看輸出",
     "expandPendingCard": "展開待處理請求繼續回答：{{title}}",
     "collapsedHint": "點開回答",
     "selectAnswer": "選擇回答 {{label}}",
-    "submittingHint": "正在把決定回傳到電腦端，請不要重複提交。",
+    "submittingHint": "正在提交決定，請勿重複提交。",
     "decisionNotAccepted": "未能提交，請重試。",
     "customAnswerInputAccessibility": "輸入自定義回答",
     "customAnswerPlaceholder": "輸入其他回答",
@@ -101,7 +101,7 @@
   },
   "kinds": {
     "permission": {
-      "title": "需要授權電腦端操作",
+      "title": "需要授權操作",
       "label": "授權"
     },
     "ask_user_question": {
@@ -381,7 +381,7 @@
       "highRiskTitle": "高風險授權需要二次確認",
       "highRiskDetail": "先核對指令內容，再點一次確認允許；不確定就拒絕。",
       "sessionAllowTitle": "可以只允許一次，也可以本任務總是允許",
-      "allowTitle": "允許後電腦端會繼續執行",
+      "allowTitle": "允許後將繼續執行",
       "tool": "工具：{{tool}}",
       "title": "允許使用 {{tool}}？",
       "risk": "這個指令可能修改系統、倉庫或外部服務狀態。允許前請確認你信任目前任務和指令內容。"

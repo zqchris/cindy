@@ -1,3 +1,4 @@
+import { nativeHarness } from "@/local-harness/kernel";
 import { diagnosticUploadConfigured, uploadMobileDiagnostics } from '@/debug/mobileDiagnosticUpload';
 import { clearDiagnostics, diagnosticsEnabled, exportDiagnostics, hydrateDiagnostics, setDiagnosticsEnabled } from '@/debug/localDiagnostics';
 import Constants from 'expo-constants';
@@ -910,6 +911,10 @@ export default function SettingsScreen() {
             </SettingsGroup>
           ) : null}
 
+          {nativeHarness ? <SettingsGroup title={t('session.local.device')}>
+            <ActionInfoRow label={t('session.local.models')} value="" accessibilityLabel={t('session.local.models')}
+              onPress={() => router.push('/model-settings')} testID="settings.local.models" />
+          </SettingsGroup> : null}
           <SettingsGroup title={t('sharedTask.title')}>
             <ActionInfoRow
               accessibilityLabel={t('sharedTask.manageSharing')}

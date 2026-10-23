@@ -131,10 +131,22 @@
         "deleted": "削除済み"
       },
       "actions": {
-        "settings": { "label": "設定", "a11y": "タスク設定を開く" },
-        "usage": { "label": "使用量", "a11y": "タスクの使用量を表示" },
-        "files": { "label": "ファイル", "a11y": "リモートファイルを参照" },
-        "queue": { "label": "キュー", "a11y": "キューパネルを開く" },
+        "settings": {
+          "label": "設定",
+          "a11y": "タスク設定を開く"
+        },
+        "usage": {
+          "label": "使用量",
+          "a11y": "タスクの使用量を表示"
+        },
+        "files": {
+          "label": "ファイル",
+          "a11y": "リモートファイルを参照"
+        },
+        "queue": {
+          "label": "キュー",
+          "a11y": "キューパネルを開く"
+        },
         "search": {
           "label": "検索",
           "openA11y": "メッセージを検索",
@@ -259,7 +271,7 @@
     "editingQueueMessage": "キュー内メッセージを編集中",
     "discardQueueEdit": "キュー内メッセージの編集を破棄",
     "savingHint": "変更を保存中です。完了してから操作してください。",
-    "composerPlaceholder": "リモートメッセージを入力",
+    "composerPlaceholder": "メッセージを入力",
     "openSessionMenu": "セッションメニューを開く",
     "searchTitle": "このセッションを検索",
     "searchPlaceholder": "このセッションのメッセージを検索",
@@ -303,7 +315,7 @@
     "workspaceDialogue": "会話",
     "workspaceProject": "プロジェクト",
     "selectProject": "プロジェクトを選択",
-    "composerPlaceholder": "今日は何をしましょうか〜",
+    "composerPlaceholder": "メッセージを入力",
     "voiceSelectDeviceFirst": "デバイスを選択してから音声入力を使用してください。",
     "creatingSession": "セッションを作成中",
     "slowSend": {
@@ -675,5 +687,19 @@
       "ORCA_CREATE_UNCONFIRMED": "Worker の作成がタイムアウトし、成功したか確認できませんでした。まず Worker 一覧を確認し、新しい Worker がない場合のみ再試行してください。",
       "ORCA_ACTION_UNCONFIRMED": "操作がタイムアウトしたため、結果をまだ確認できません。一覧を更新しました。現在の表示を基準にしてください。"
     }
+  },
+  "local": {
+    "loginCindyAI": "ログインして Cindy AI を使う",
+    "refreshCindyAI": "Cindy AI のモデルを更新",
+    "device": "このデバイス",
+    "newTask": "新しいタスク",
+    "attachmentsUnsupported": "このローカルモデルはまだ添付ファイルに対応していません。",
+    "models": "モデル",
+    "chatgpt": "ChatGPT でログイン",
+    "modelHint": "この端末でログインするか、API モデルを追加します。パソコンの認証情報は変更しません。",
+    "failed": "操作を完了できませんでした。もう一度お試しください。",
+    "skipLogin": "ログインせずこの端末で使う",
+    "runsHere": "この端末で実行",
+    "connectModel": "モデルを追加して、この端末で作業を始めましょう。"
   }
 }

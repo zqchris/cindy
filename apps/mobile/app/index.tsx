@@ -1,15 +1,17 @@
+import { useLocalAccess } from "@/local-harness/localAccess";
 import { Redirect } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import HomeScreen from './devices';
 import { useHomeEntry } from '@/session/HomeEntryProvider';
 
 export default function IndexScreen() {
+  const local = useLocalAccess();
   const auth = useAuth();
   const entry = useHomeEntry();
   // auth 恢复期间由根部常驻 splash 覆盖层顶着(见 StartupSplashOverlay),这里不再
   // 渲染独立的 splash 实例,避免与覆盖层交接时的 remount 闪帧。
-  if (!auth.initialized) return null;
-  if (!auth.isAuthenticated) return <Redirect href="/login" />;
+  if (!auth.initialized || !local.ready) return null;
+  if (!auth.isAuthenticated && !local.enabled) return <Redirect href="/login" />;
   if (!entry.ready) return null;
   if (entry.href) return <Redirect href={entry.href} />;
   return <HomeScreen />;

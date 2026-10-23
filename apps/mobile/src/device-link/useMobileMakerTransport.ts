@@ -1,3 +1,4 @@
+import { isLocalDevice } from '@/local-harness/destination';
 import { useMemo, useRef } from "react";
 import { useAuth } from "@/auth/AuthContext";
 import { useDeviceLink } from "./DeviceLinkContext";
@@ -27,6 +28,19 @@ export function useMobileMakerTransport(
         invoke,
         isCurrent,
       });
+      if (isLocalDevice(deviceId)) {
+        maker.fileBrowser.readBytes = async (workdir, relPath, signal) => {
+          if (signal?.aborted) throw new Error('PREVIEW_CANCELLED');
+          const result = await maker.fileBrowser.readFile(workdir, relPath);
+          assertCurrent();
+          if (!result.ok || signal?.aborted) throw new Error('FILE_READ_FAILED');
+          const bytes = new TextEncoder().encode(result.data.content);
+          let binary = ''; for (const b of bytes) binary += String.fromCharCode(b);
+          const ext = relPath.split('.').pop()?.toLowerCase();
+          return { ossKey: '', mimeType: ext === 'html' ? 'text/html' : ext === 'svg' ? 'image/svg+xml' : 'text/plain', size: bytes.length, inlineBase64: btoa(binary) };
+        };
+        return maker;
+      }
       const readPreview = maker.fs.readTextFilePreview;
       maker.fs.readTextFilePreview = (path, options) => readRemoteTextFilePreview({
         maker, deviceId, openLink, isCurrent,
