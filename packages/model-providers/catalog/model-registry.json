@@ -1,6 +1,6 @@
 {
   "schemaVersion": 6,
-  "updatedAt": "2026-10-27T11:55:00.000Z",
+  "updatedAt": "2026-10-27T15:16:20.193Z",
   "models": [
     {
       "id": "openai/gpt-6.1-sol",
@@ -10780,7 +10780,7 @@
       "id": "agnes-anthropic-messages",
       "providerId": "agnes",
       "api": "anthropic-messages",
-      "baseUrl": "https://apihub.agnes-ai.com/v1",
+      "baseUrl": "https://apihub.agnes-ai.com",
       "inputBaseUrls": [
         "https://apihub.agnes-ai.com",
         "https://apihub.agnes-ai.com/v1"

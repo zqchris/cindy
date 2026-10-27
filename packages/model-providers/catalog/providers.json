@@ -2281,7 +2281,7 @@
       ],
       "runtimes": {
         "claude-code": {
-          "baseUrl": "https://apihub.agnes-ai.com/v1",
+          "baseUrl": "https://apihub.agnes-ai.com",
           "modelsUrl": "https://apihub.agnes-ai.com/v1/models",
           "wireProtocol": "anthropic-messages"
         },
@@ -2291,7 +2291,7 @@
           "wireProtocol": "openai-responses"
         },
         "pi": {
-          "baseUrl": "https://apihub.agnes-ai.com/v1",
+          "baseUrl": "https://apihub.agnes-ai.com",
           "modelsUrl": "https://apihub.agnes-ai.com/v1/models",
           "wireProtocol": "anthropic-messages"
         }
