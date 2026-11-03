@@ -507,7 +507,7 @@ describe('mobile home desktop-first surface', () => {
     expect(vendorIconSource).toContain('<MobileAgentMark agentKind={agentKind} color={color} size={size} />');
     expect(vendorIconSource).not.toContain('viewBox="136 137 282 158"');
     expect(vendorIconSource).not.toContain('transform="translate(');
-    expect(vendorIconSource).toContain('Easing.inOut(Easing.ease)');
+    // Running animation parameters are exercised through the real task icon in sessionBreathing.test.tsx.
     // 行运行态经订阅获取(memo 化后命令式读取会 stale,2026-07-18 重渲染风暴修复)
     expect(homeSource).toContain('const sessionIsRunning = useSessionRunning(latestItem.session.id);');
     // 保鲜契约:项目/自动化折叠只订阅低频首页状态；消息预览下沉到 session 行。
