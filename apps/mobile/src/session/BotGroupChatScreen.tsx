@@ -1250,7 +1250,7 @@ export const BotGroupTimeline = memo(function BotGroupTimeline({
         : null}
         {actions}
         </View>} topic={!!threadRootId} isRoot={isRoot} active={active} interactive={!selectedImages && (!longRoot || expandedRoot)} onOpenDiagram={onOpenDiagram ? source => onOpenDiagram(source, message) : undefined} onRetrySource={onRetrySource} message={displayMessage} continued={continued} member={message.authorBotId ? memberById.get(message.authorBotId) : undefined}
-          quoteDisplay={message.quote ? resolveBotGroupQuote(message.quote, messages) : undefined}
+          quoteDisplay={message.quote ? resolveBotGroupQuote(message.quote, group.messages, message.threadRootId) : undefined}
           onLocateQuote={message.quote && onLocateMessage ? () => onLocateMessage(message.quote!.messageId) : undefined}
           members={group.members} deviceId={deviceId} online={online} identityFor={identityFor} mentionLabels={mentionLabels}
           mentionContext={{ members: group.members, mentions: message.mentions, serverBacked: !!group.serverBacked,

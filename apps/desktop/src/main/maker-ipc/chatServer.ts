@@ -160,6 +160,8 @@ interface Running {
   lane?: string;
   laneLookup?: Promise<void>;
   attachmentAfter?: string;
+  /** One authorized target for the visible reply, never a source of recipients. */
+  replyQuote?: { messageId: string; threadRootId: string | null; members: Member[] };
   textProgress?: { scope: string; after: string; seen: Map<string, string> };
   settlement?: { terminal: BotGroupLaneTerminal; cancelled?: boolean; payload?: Record<string, unknown>; reply?: { sourceText: string; text: string; attachments: ChatUploadAttachment[] }; fileReply?: Awaited<ReturnType<typeof prepareChatReplyFiles>>; retryAt: number; keepLease?: boolean; refused?: boolean };
   delivery?: Promise<void>;
@@ -428,7 +430,8 @@ function discussionTurnBrief(plan: ServerPlan, position: number, history: readon
 function quoteContext(m: Message, history: readonly Message[]) {
   const quote = m.deleted ? null : readBotGroupQuote(m.content);
   if (!quote) return {};
-  const original = history.find(o => o.id === quote.messageId && o.threadRootId === null);
+  const original = history.find(o => o.id === quote.messageId
+    && (o.threadRootId === null || o.threadRootId === m.threadRootId));
   if (original?.deleted) return { quote: { messageId: quote.messageId, deleted: true } };
   const files = original ? quotedAttachments(original) : null;
   return { quote: { messageId: quote.messageId, from: original?.author.name ?? quote.authorName,
@@ -1849,13 +1852,30 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
       throw error;
     }
     const resolvedMembers = await members;
-    const view = messageView(quoted, resolvedMembers, direct ? [] : resolvedMembers);
-    if (quoted.id !== messageId || quoted.deleted || quoted.threadRootId !== null || quoted.origin === 'system'
-      || view.kind !== 'message' || view.authorKind === 'system' || readBotGroupThreadShareCard(quoted)) throw new Error('QUOTE_UNAVAILABLE');
-    return { ...botGroupQuoteFromMessage({ ...view, content: quotedText(quoted),
-      attachments: quotedAttachments(quoted) }),
-      ...(quoted.author.kind === 'bot' ? { recipientActorId: quoted.authorId } : {}) };
+    const quote = quoted.id === messageId ? quoteFromReadMessage(quoted, resolvedMembers, null, direct) : undefined;
+    if (!quote) throw new Error('QUOTE_UNAVAILABLE');
+    return { ...quote, ...(quoted.author.kind === 'bot' ? { recipientActorId: quoted.authorId } : {}) };
   }
+
+  function quoteFromReadMessage(message: Message, members: Member[], threadRootId: string | null, direct = false) {
+    if (message.deleted || message.threadRootId !== threadRootId || message.origin === 'system' || readBotGroupThreadShareCard(message)) return;
+    const view = messageView(message, members, direct ? [] : members);
+    if (view.kind !== 'message' || view.authorKind === 'system' || !view.authorName.trim()) return;
+    return botGroupQuoteFromMessage({ ...view, content: quotedText(message), attachments: quotedAttachments(message) });
+  }
+
+  function setReplyQuote(run: Running, members: Member[], source: Message | undefined, explicit: Message | undefined) {
+    if (!source || source.deleted || run.execution.mask_kind === 'digest' || run.plan) return;
+    // The execution owns exactly one source. A later message in the context is
+    // not another trigger, and an inherited Thread-root quote is not explicit.
+    const addressed = run.execution.mask_owner_id ?? run.execution.bot_id;
+    const target = explicit && source.author.kind === 'human' && source.origin !== 'bot'
+      && explicit.id === readBotGroupQuote(source.content)?.messageId
+      && BigInt(explicit.seq) < BigInt(source.seq) && !explicit.deleted
+      && (!source.mentions?.includes(addressed) || explicit.authorId === addressed) ? explicit : source;
+    run.replyQuote = { messageId: target.id, threadRootId: target.threadRootId, members };
+  }
+
   // Attachments are independent of the text projection. A failed object store
   // request never rejects a room/Thread; subsequent reads retry after a backoff.
   // Until the bytes are here the view keeps a named placeholder in its place, so
@@ -2942,13 +2962,31 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
             failureCodes.set(`${run.execution.id}:${run.execution.epoch}`, terminal.failureCode ?? 'RUNTIME_ERROR');
             if (failureCodes.size > 1000) failureCodes.delete(failureCodes.keys().next().value!);
           }
+          const hasReply = !isBotGroupNoReplyText(text) || files.length > 0;
+          let quote: BotGroupQuoteView | undefined;
+          if (terminal.outcome !== 'error' && hasReply && run.replyQuote) {
+            const { messageId, threadRootId, members } = run.replyQuote;
+            // A long turn can outlive the quote target. Recheck the single
+            // room-scoped message before publishing, not on settlement retries.
+            quote = await readMessage(run.execution.conversation_id, messageId)
+              .then(target => target ? quoteFromReadMessage(target, members, threadRootId) : undefined)
+              .catch(() => undefined);
+          }
+          const content = [{ type: 'text', text: contentText.slice(0, 16000) || '已完成' }, ...files,
+            botGroupProcessCard({ groupId: run.execution.conversation_id, executionId: run.execution.id, sessionId: run.sessionId,
+              clientId: run.clientId, durationMs: run.durationMs, ...(selfDeviceId ? { deviceId: selfDeviceId } : {}) })];
+          if (quote) {
+            const card = buildBotGroupQuoteCard(quote);
+            // The optional preview must not make an otherwise deliverable reply exceed the server's content budget.
+            if (Buffer.byteLength(JSON.stringify([...content, card])) <= 64 * 1024) content.push(card);
+          }
           pending.payload = terminal.outcome === 'error' ? { detail: botGroupRuntimeFailureDetail(terminal.failureCode ?? 'RUNTIME_ERROR') }
-            : { ...(isBotGroupNoReplyText(text) && !files.length ? {} : {
+            : { ...(!hasReply ? {} : {
               ...(() => {
                 const named = run.mentionable?.length ? resolveBotGroupMentions(contentText, { members: run.mentionable, allLabels: [] }).botIds.filter(target => target !== run.execution.bot_id) : [];
                 return named.length ? { mentions: named } : {};
               })(),
-              content: [{ type: 'text', text: contentText.slice(0, 16000) || '已完成' }, ...files, botGroupProcessCard({ groupId: run.execution.conversation_id, executionId: run.execution.id, sessionId: run.sessionId, clientId: run.clientId, durationMs: run.durationMs, ...(selfDeviceId ? { deviceId: selfDeviceId } : {}) })] }),
+              content }),
               // A single-speaker server never chains rounds, so there is nothing to continue.
               ...(singleSpeaker || run.execution.mask_owner_id ? {} : { continueDiscussion: !run.plan && !isBotGroupNoReplyText(text) }) };
         }
@@ -3150,6 +3188,7 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
       // take media IDs from the quote snapshot, scan history or follow another quote from it.
       const quote = readBotGroupQuote(source.content);
       const quotedMessage = quote ? await readQuotedOriginal(roomId, quote.messageId, source) : undefined;
+      setReplyQuote(run, s.members, source, quotedMessage);
       if (!live() || run.settlement) throw new Error('STALE_EXECUTOR');
       // Files on the request and its direct quote take priority over its displayed background.
       const { attachments, incomplete } = await downloadTaskAttachments(roomId,
@@ -3456,6 +3495,7 @@ function createChatServer(local: BotGroupChatService, deps: BotGroupChatServiceD
       contextRead.catch(() => undefined);
       const lane = await laneSetup;
       const { history, source, threadRootId, thread, focusMessages, quotedMessage, attachments, missingAttachments, mediaDelivery } = await contextRead;
+      setReplyQuote(run, s.members, source, quotedMessage);
       if (!current()) throw new Error('OWNER_CHANGED');
       if (missingAttachments.length) void postCapabilityNotice(run, 'ATTACHMENTS_UNAVAILABLE', threadRootId ?? undefined);
       const runtime = laneContext(lane.sessionId);

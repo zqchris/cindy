@@ -8,7 +8,7 @@
  *
  * 摘要只是发送时的快照：原消息仍在已加载的时间线里时一律以原消息为准（含已删除），
  * 只有原消息不在本端时才显示快照。卡片内容是群成员提交的数据，读取时逐字段校验，
- * 不能当作指令或授权，也不能指向别的群或 Thread。
+ * 不能当作指令或授权。自动回复也可引用当前话题内的触发消息，不能指向别的群或话题。
  */
 import { botGroupMessageSummaryText } from './botGroupTask';
 import type { BotGroupAttachment, BotGroupMessageView } from './botGroupChat';
@@ -23,7 +23,7 @@ const FALLBACK_MAX = 4000;
 
 /** The quoted message as a reader sees it. */
 export interface BotGroupQuoteView {
-  /** Main-timeline message of the same group. */
+  /** Message of the same group, on the main timeline or in the current Thread. */
   messageId: string;
   /** Author name snapshot taken when the quote was sent. */
   authorName: string;
@@ -194,8 +194,8 @@ export function readBotGroupQuote(content: readonly unknown[]): BotGroupQuoteVie
 
 /**
  * How a quote reads right now. `live` and `deleted` come from the original in the loaded
- * main timeline of the same group; `snapshot` means the original is not loaded here.
- * Only main-timeline messages can match, so a quote never resolves into a Thread.
+ * group; `snapshot` means the original is not loaded here. Main-timeline messages can
+ * always match; Thread replies can only match in the quoting message's own Thread.
  */
 export type BotGroupQuoteDisplay =
   | { state: 'live'; authorName: string; excerpt: string; attachmentCount: number; attachmentName: string | null }
@@ -205,8 +205,10 @@ export type BotGroupQuoteDisplay =
 export function resolveBotGroupQuote(
   quote: BotGroupQuoteView,
   loaded: readonly Pick<BotGroupMessageView, 'id' | 'deleted' | 'threadRootId' | 'authorName' | 'content' | 'attachments' | 'task'>[],
+  threadRootId?: string | null,
 ): BotGroupQuoteDisplay {
-  const original = loaded.find((message) => message.id === quote.messageId && !message.threadRootId);
+  const original = loaded.find((message) => message.id === quote.messageId
+    && (!message.threadRootId || message.threadRootId === threadRootId));
   if (quote.originalDeleted) return { state: 'deleted', authorName: original?.authorName || quote.authorName };
   if (!original) return { state: 'snapshot', authorName: quote.authorName, excerpt: quote.excerpt,
     attachmentCount: quote.attachmentCount, attachmentName: quote.attachmentName };

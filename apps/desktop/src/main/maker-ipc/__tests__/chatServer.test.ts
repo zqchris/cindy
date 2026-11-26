@@ -486,6 +486,51 @@ describe('Chat Server result delivery and refresh', () => {
     expect(fixture.handle.mock.calls.some(([route, , body]) => route === '/mask/executions/claim' && body?.accessPolicyVersion === 1)).toBe(true);
   });
 
+  // #13022, unit: settle the real AI reply execution and inspect room delivery.
+  // The existing grant tests don't check what readers see on a successful reply.
+  it.each(['mention', 'explicit quote', 'deleted original', 'late deletion', 'thread', 'silent'] as const)(
+    'delivers one authorized quote for an AI reply (%s)', async kind => {
+      const peer = '30000000-0000-4000-8000-000000000002';
+      const original = { id: '50000000-0000-4000-8000-000000000002', seq: '1',
+        authorId: selfId, author: { kind: 'human', name: 'Pat' },
+        content: [{ type: 'text', text: 'Original question' }], threadRootId: null, deleted: false };
+      const explicit = kind === 'explicit quote' || kind === 'deleted original' || kind === 'late deletion';
+      let deleted = kind === 'deleted original';
+      const newerMessage = { ...original, id: '50000000-0000-4000-8000-000000000003', seq: '3' };
+      const source = { id: execution.source_message_id, seq: '2', authorId: peer, author: { kind: 'human', name: 'Sam' },
+        mentions: explicit ? [] : [selfId], content: [{ type: 'text', text: 'Follow-up question' }, ...(explicit ? [buildBotGroupQuoteCard({
+          messageId: original.id, authorName: 'Untrusted snapshot', authorKind: 'user', excerpt: 'Stale text',
+          attachmentCount: 0, attachmentName: null, sequence: 1,
+        })] : [])], threadRootId: kind === 'thread' ? original.id : null, deleted: false };
+      fixture.handle.mockImplementation(route => {
+        if (route === '/me') return { body: { actor: { id: selfId }, capabilities: { personalMask: 1 } } };
+        if (route === '/mask/executions/claim') {
+          const next = claimed ? null : { ...execution, context_seq: '3', mask_owner_id: selfId, mask_kind: 'reply', requester_id: peer };
+          claimed = true; return { body: { execution: next } };
+        }
+        if (route.endsWith('/messages/' + source.id)) return { body: source };
+        if (route.endsWith('/messages/' + original.id)) return { body: { ...original, deleted } };
+        if (route.includes('/messages?')) return { body: [newerMessage, source, original] };
+        return response(route);
+      });
+      await start();
+      if (kind === 'late deletion') deleted = true;
+      await service.settleLaneTurn({ ...terminal, resultText: kind === 'silent' ? 'NO_REPLY' : 'Finished reply' });
+      expect(deliveries()).toHaveLength(1);
+      const sent = deliveries()[0]![2];
+      expect(sent).not.toHaveProperty('mentions');
+      if (kind === 'silent') {
+        expect(sent).not.toHaveProperty('content');
+        return;
+      }
+      expect(sent.content.filter((block: { namespace?: string }) => block.namespace === 'cindy.quote')).toEqual(kind === 'late deletion' ? [] : [
+        expect.objectContaining({ schemaRevision: 1, data: expect.objectContaining(kind === 'explicit quote'
+          ? { messageId: original.id, authorName: 'Pat', excerpt: 'Original question' }
+          : { messageId: source.id, authorName: 'Sam', excerpt: 'Follow-up question' }) }),
+      ]);
+      expect(sent.content).toContainEqual({ type: 'text', text: 'Finished reply' });
+    });
+
   // Regression: the read-only probe covers ordinary and member-joined queues only. Its empty
   // answer must not stop the idle claim that is the only way AI reply work is discovered.
   it('keeps claiming AI reply work when the server also offers read-only work discovery', async () => {
@@ -4250,7 +4295,8 @@ describe('Chat Server result delivery and refresh', () => {
       await start();
       await service.settleLaneTurn({ ...terminal, resultText: 'My view.' });
       const [delivery] = deliveries();
-      expect(delivery[2].content).toEqual([{ type: 'text', text: 'My view.' }, processRecord]);
+      expect(delivery[2].content).toEqual([{ type: 'text', text: 'My view.' }, processRecord,
+        expect.objectContaining({ namespace: 'cindy.quote', data: expect.objectContaining({ messageId: execution.source_message_id }) })]);
       expect(delivery[2]).not.toHaveProperty('continueDiscussion');
     });
 

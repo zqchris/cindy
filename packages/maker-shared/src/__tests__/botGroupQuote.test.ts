@@ -138,7 +138,13 @@ describe('resolveBotGroupQuote', () => {
       .toEqual({ state: 'live', authorName: 'Cindy (Chris)', excerpt: '', attachmentCount: 2, attachmentName: 'plan.pdf' });
   });
 
-  it('never resolves into a Thread reply with the same id', () => {
-    expect(resolveBotGroupQuote(quote(), [message({ threadRootId: OTHER, content: 'thread' })]).state).toBe('snapshot');
+  // #13022 / unit: existing main-timeline coverage cannot detect a stale preview
+  // after the source of an automatic Thread reply was edited or deleted.
+  it('resolves an edited or deleted Thread original only in the same Thread', () => {
+    const source = message({ threadRootId: OTHER, content: 'edited in thread' });
+    expect(resolveBotGroupQuote(quote(), [source]).state).toBe('snapshot');
+    expect(resolveBotGroupQuote(quote(), [source], quote().messageId).state).toBe('snapshot');
+    expect(resolveBotGroupQuote(quote(), [source], OTHER)).toMatchObject({ state: 'live', excerpt: 'edited in thread' });
+    expect(resolveBotGroupQuote(quote(), [{ ...source, deleted: true }], OTHER)).toEqual({ state: 'deleted', authorName: source.authorName });
   });
 });

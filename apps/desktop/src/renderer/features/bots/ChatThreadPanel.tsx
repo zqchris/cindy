@@ -477,6 +477,7 @@ export function ChatThreadPanel({ group, rootId, speakers = [], onStop, stopping
   const memberById = useMemo(() => new Map(members.map((member) => [member.botId, member])), [members]);
   const separator = t('bots.groupChat.memberSeparator');
 
+  const threadQuoteSources = useMemo(() => [...quoteSources, ...replies], [quoteSources, replies]);
   const realReplies = useMemo(() => projectBotGroupExecutionFailures(replies, executionFailures), [replies, executionFailures]);
   const adoptedKeysRef = useRef(new Map<string, string>());
   const pendingMatches = useMemo(() => matchBotGroupPendingSends(pendingSends, realReplies, adoptedKeysRef.current), [pendingSends, realReplies]);
@@ -673,8 +674,7 @@ export function ChatThreadPanel({ group, rootId, speakers = [], onStop, stopping
         reactionGroupId={group.id}
         readersEnabled={group.supportsMessageReaders === true}
         reactionRevision={messageReactionRevision(group, message.id)}
-        // A 话题 root may itself be a 引用回复; its original lives in the main timeline.
-        quoteDisplay={message.quote ? resolveBotGroupQuote(message.quote, quoteSources) : undefined}
+        quoteDisplay={message.quote ? resolveBotGroupQuote(message.quote, threadQuoteSources, message.threadRootId) : undefined}
         onChanged={onChanged}
         menuActions={postAction ? [postAction] : undefined}
         footer={shared ? <button type="button" onClick={onReveal} disabled={!onReveal}
