@@ -14,7 +14,7 @@ import { parseRemoteBots, type RemoteBot } from './remoteBotRoster';
 import { markRemoteBotRead, retryRemoteBotRoster, useRemoteBots } from './useRemoteBots';
 import { useCompanionCloud } from './companionCloudStore';
 import { cloudCompanionAt, homeControlOff, localCompanionNeedsRecovery } from './companionCloudPresentation';
-import { useDeviceLinkDeviceList, useDeviceLinkDeviceListRequestState } from '@/features/device-link/useDeviceLinkDeviceList';
+import { retryDeviceLinkDeviceList, useDeviceLinkDeviceList, useDeviceLinkDeviceListRequestState } from '@/features/device-link/useDeviceLinkDeviceList';
 import { useDeviceLinkFirstConnectionPending } from '@/features/device-link/deviceLinkFirstConnection';
 import { useDelayedFlag } from '@/features/cc-agent/workdir-browse/hooks/useDelayedFlag';
 import { useBotProfilesLoadState } from './botStore';
@@ -186,7 +186,7 @@ function RemoteBotSessionGate() {
   const homeAwayLong = useDelayedFlag(homeAway && liveChat, CLOUD_HOME_GRACE_MS);
   const waitingForRoster = !requestedSessionId && !liveChat && !bot?.online
     && !recoveryHere && !recoveryHydrationPending && !controlOff && !homeOffline
-    && (homeConfirmedOnline || (!bot && !connecting));
+    && (homeConfirmedOnline || (!connecting && (!bot || bot.connectionKnown === false)));
   const [rosterTimedOut, setRosterTimedOut] = useState(false);
   useEffect(() => {
     setRosterTimedOut(false);
@@ -247,7 +247,7 @@ function RemoteBotSessionGate() {
           // already confirms the home online keeps main's preparation copy (#10758).
           : connecting && !bot?.online && !homeConfirmedOnline
             ? t('ccAgent.sidebar.machineSwitcher.connecting')
-            : bot && !bot.online && !homeConfirmedOnline
+            : bot && !bot.online && bot.connectionKnown !== false && !homeConfirmedOnline
               ? t('bots.remote.offlineDescription', { name: bot.name, device: bot.deviceName })
               : !bot?.online || !sessionId
                 ? t('bots.remote.preparing')
@@ -261,7 +261,13 @@ function RemoteBotSessionGate() {
           compact
           type="button"
           onClick={() => {
-            if (waitingForRoster && deviceId) retryRemoteBotRoster(deviceId);
+            if (waitingForRoster && deviceId) {
+              if (deviceList?.some(device => device.deviceId === deviceId && device.online && device.remoteControlEnabled && device.controlEnabled)) {
+                retryRemoteBotRoster(deviceId);
+              } else {
+                retryDeviceLinkDeviceList();
+              }
+            }
             setRetry((n) => n + 1);
           }}
         >

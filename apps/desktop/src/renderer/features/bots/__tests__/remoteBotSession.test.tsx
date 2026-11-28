@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   invoke: vi.fn(),
   markRead: vi.fn(),
   retryRoster: vi.fn(),
+  retryDirectory: vi.fn(),
   pin: vi.fn(),
   merge: vi.fn(),
   view: vi.fn(),
@@ -29,6 +30,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../companionCloudStore', () => ({ useCompanionCloud: () => h.cloud }));
 vi.mock('../botStore', () => ({ useBotProfilesLoadState: () => h.profileLoadState }));
 vi.mock('@/features/device-link/useDeviceLinkDeviceList', () => ({
+  retryDeviceLinkDeviceList: h.retryDirectory,
   useDeviceLinkDeviceList: () => h.devices,
   useDeviceLinkDeviceListRequestState: () => ({ status: h.deviceListStatus, error: null }),
   useDeviceLinkDeviceListAuthoritative: () => h.deviceListAuthoritative,
@@ -80,6 +82,7 @@ import { FIRST_CONNECTION_WINDOW_MS, startDeviceLinkFirstConnectionWatch, useDev
 beforeEach(() => {
   h.markRead.mockClear();
   h.retryRoster.mockClear();
+  h.retryDirectory.mockClear();
   h.navigate.mockReset();
   h.requestedSessionId = undefined;
   h.online = true;
@@ -519,28 +522,36 @@ it('shows preparation instead of offline recovery for an online home with a stal
   await screen.findByText('cloud-offline-view');
 });
 
-// #13372, unit tier: the directory stays online but the roster never settles.
-// The brief preparation checks above do not exercise timeout, retry or late recovery.
-it.each([true, false])('recovers from a roster timeout with a retained row: %s', async listed => {
-  h.listed = listed;
+// Unit, #13372 and #13785: exercise timeout, retry and late recovery even when
+// both the retained roster row and the device directory lack a confirmed connection.
+it.each(['online-listed', 'online-missing', 'unknown-listed'] as const)('recovers from a roster timeout: %s', async scenario => {
+  h.listed = scenario !== 'online-missing';
   h.online = false;
-  h.devices = [{ deviceId: 'home', online: true, remoteControlEnabled: true, controlEnabled: true }];
+  if (scenario === 'unknown-listed') h.connectionKnown = false;
+  else h.devices = [{ deviceId: 'home', online: true, remoteControlEnabled: true, controlEnabled: true }];
   h.cloud = { enabled: true, selfDeviceId: 'desk', humanActorId: 'human', demotedBotIds: [], actors: [
     { id: 'a-writer', externalId: 'writer', name: 'Writer', avatar: null, homeDeviceId: 'home' }] };
   vi.useFakeTimers();
   try {
+    if (scenario === 'unknown-listed') act(() => h.relayStatus?.({ status: 'connecting' }));
     const view = render(<RemoteBotSessionView />);
+    if (scenario === 'unknown-listed') {
+      expect(screen.getByText('ccAgent.sidebar.machineSwitcher.connecting')).toBeTruthy();
+      act(() => { vi.advanceTimersByTime(FIRST_CONNECTION_WINDOW_MS); });
+    }
     act(() => { vi.advanceTimersByTime(29_999); });
     expect(screen.getByText('bots.remote.preparing')).toBeTruthy();
     act(() => { vi.advanceTimersByTime(1); });
     expect(screen.getByText('bots.sessionLoadFailedDescription')).toBeTruthy();
     expect(h.cloudView).not.toHaveBeenCalled();
     act(() => screen.getByRole('button', { name: 'bots.retry' }).click());
-    expect(h.retryRoster.mock.calls).toEqual([['home']]);
+    expect(h.retryDirectory).toHaveBeenCalledTimes(scenario === 'unknown-listed' ? 1 : 0);
+    expect(h.retryRoster.mock.calls).toEqual(scenario === 'unknown-listed' ? [] : [['home']]);
     expect(screen.getByText('bots.remote.preparing')).toBeTruthy();
     act(() => { vi.advanceTimersByTime(30_000); });
     expect(screen.getByRole('button', { name: 'bots.retry' })).toBeTruthy();
     h.listed = h.online = true;
+    h.devices = [{ deviceId: 'home', online: true, remoteControlEnabled: true, controlEnabled: true }];
     await act(async () => view.rerender(<RemoteBotSessionView />));
     expect(screen.getByText('remote-conversation')).toBeTruthy();
     expect(h.view.mock.lastCall?.[0]).toMatchObject({ sessionIdProp: 'new-canonical', readOnly: false });
