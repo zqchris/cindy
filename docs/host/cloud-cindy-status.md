@@ -96,8 +96,12 @@ Linux 验收发现，旧后台已保存首条消息，却不支持手机按原�
    见[手机模型组读取](../../apps/mobile/src/session/hostModelGroups.ts)和
    [桌面新建目标](../../apps/desktop/src/renderer/components/new-chat/NewGoalDialog.tsx)。
    用合成被控端回执和真实界面验证提示，尚未连接真实云端复测这两个拒绝路径。
-8. **默认设备名。** 后台默认使用主机名加「Cindy Host」。当前可用 `CINDY_HOST_DEVICE_NAME`
-   覆盖，见[设备信息采集](../../apps/host/src/platform/machine-status.ts)。
+8. **默认设备名（新开通实例待验收）。** 开通方应在启用云端 Host 前，把用户开通时起的名字写入
+   镜像的设备名配置文件；用户在设备设置里手动改过的名字始终优先。没有开通名时，Host 沿用
+   `CINDY_HOST_DEVICE_NAME`，再回退到「主机名 · Cindy Host」。写入器在
+   [云主机镜像仓](https://github.com/makecindy/cindy-cloud-images)；现有实例不因更新镜像自动改名，
+   仍待交付流程接入和新实例验收。云厂商元数据可能只给机器生成名，暂不读取；后续若能证明
+   元数据保存了用户起的名字，再评估作为补充来源。见[设备信息采集](../../apps/host/src/platform/machine-status.ts)。
 9. **个人账号 CLI 登录（已补）。** 个人登录仍使用服务器开放的浏览器方式；只有一种时直接选用。
    有多种时，交互终端按桌面同名方式列出选项，输入编号后继续浏览器验证；非交互终端列出每种方式的
    `--method=<id>` 写法，并以 `LOGIN_METHOD_REQUIRED`（退出码 2）拒绝继续，不等待输入。

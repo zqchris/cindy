@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { readHostDeviceName } from './platform/machine-status.ts';
 
 // node:test has no default timeout. These tests start subprocesses or use real temporary
 // files; an explicit bound turns a stuck child or lock into a failure, not a stalled gate.
@@ -11,6 +13,20 @@ const TEST_TIMEOUT_MS = 120_000;
 
 const srcDir = path.dirname(fileURLToPath(import.meta.url));
 const hostDir = path.dirname(srcDir);
+
+// The image recipe writes the provisioned name to CINDY_HOST_DEVICE_NAME; the
+// optional EnvironmentFile must leave the old hostname fallback intact.
+test('Host reports its configured name or the hostname fallback', t => {
+  const previous = process.env.CINDY_HOST_DEVICE_NAME;
+  t.after(() => {
+    if (previous === undefined) delete process.env.CINDY_HOST_DEVICE_NAME;
+    else process.env.CINDY_HOST_DEVICE_NAME = previous;
+  });
+  process.env.CINDY_HOST_DEVICE_NAME = '  Provisioned cloud  ';
+  assert.equal(readHostDeviceName(), 'Provisioned cloud');
+  process.env.CINDY_HOST_DEVICE_NAME = '  ';
+  assert.equal(readHostDeviceName(), `${os.hostname()} · Cindy Host`);
+});
 
 
 test('the boot step removes the same keys as Desktop and keeps the import source directory', { timeout: TEST_TIMEOUT_MS }, () => {

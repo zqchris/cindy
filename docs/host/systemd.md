@@ -48,6 +48,13 @@ systemctl --user daemon-reload
 | `Environment=CINDY_HOST_REGION` | 注释掉 | 从 checkout 运行（本单元的 `ExecStart`）时选择版本：`cn` 或 `global`，不写按 global。安装的 Host 发布包按区域各一个，版本在构建时定死，不需要这一行；写了而且和包的版本不同，Host 拒绝启动（`HOST_REGION_MISMATCH`）。装国内版包的，删掉这一行或写 `cn` |
 | `CINDY_HOST_DATA_DIR` | 注释掉 | 指定后直接使用该目录，等价于 Desktop 的 `XDT_USER_DATA_DIR` |
 | `CINDY_HOST_OWNER` | 注释掉 | 资料目录里有多个账号数据库时，用它明确选择账号。它不能替代登录。 |
+| `CINDY_HOST_DEVICE_NAME` | 不设置 | Host 上报的默认设备名；未设置或只有空白时为「主机名 · Cindy Host」。用户在设备设置里手动改名始终优先。 |
+
+云主机镜像的用户单元另有可选的
+`EnvironmentFile=-/etc/cindy-cloud-host/device-name.env`：交付引导在启用 Host 前将用户开通时起的
+名字安全写入该文件，作为 `CINDY_HOST_DEVICE_NAME` 传给 Host。文件缺失时，仍可按原方式在
+单元里设置 `CINDY_HOST_DEVICE_NAME`；两者都没有时保持主机名回退。该配置只改变 Host 上报的
+默认名，不覆盖用户已经手动设置的设备名。见[云端 Cindy 的设备名缺口](cloud-cindy-status.md#剩余缺口)。
 
 `Restart=always` + `RestartSec=3` 保证崩溃后自动恢复；`KillSignal=SIGTERM` 让 host
 先释放 runtime 锁并关闭数据库。`StartLimitIntervalSec=0` 关闭启动频率限制，避免
